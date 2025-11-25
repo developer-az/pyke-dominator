@@ -6,7 +6,7 @@
   "author": "Az040",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Az040/pyke-dominator.git"
+    "url": "https://github.com/developer-az/pyke-dominator.git"
   },
   "main": "dist-electron/main.js",
   "build": {
