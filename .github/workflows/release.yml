@@ -43,7 +43,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           artifacts: "release/*.exe"
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}
 
   deploy-web:
     runs-on: ubuntu-latest
