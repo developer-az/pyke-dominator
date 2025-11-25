@@ -26,6 +26,9 @@ jobs:
       - name: Build Web
         run: npm run build
 
+      - name: Build Electron Main
+        run: npm run electron:build
+
       - name: Build Electron App
         run: npx electron-builder --publish never
 
