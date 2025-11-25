@@ -36,15 +36,14 @@ jobs:
         run: npx electron-builder --publish never
 
       - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            release/*.exe
-            release/*.yml
-            release/*.blockmap
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --generate-notes \
+            release/*.exe
 
   deploy-web:
     runs-on: ubuntu-latest
