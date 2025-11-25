@@ -23,10 +23,7 @@
       "target": [
         "nsis"
       ]
-    },
-    "publish": [
-      "github"
-    ]
+    }
   },
   "scripts": {
     "dev": "vite",
