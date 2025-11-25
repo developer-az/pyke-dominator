@@ -5,10 +5,7 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+permissions: write-all
 
 jobs:
   release-electron:
@@ -29,21 +26,21 @@ jobs:
       - name: Build Web
         run: npm run build
 
-      - name: Build Electron Main
-        run: npm run electron:build
-
       - name: Build Electron App
         run: npx electron-builder --publish never
 
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: release/*.exe
+
       - name: Publish Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Release ${{ github.ref_name }}" \
-            --generate-notes \
-            release/*.exe
+        uses: ncipollo/release-action@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          artifacts: "release/*.exe"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-web:
     runs-on: ubuntu-latest
