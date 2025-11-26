@@ -441,6 +441,42 @@ const estimateSupportDamage = (supportName: string, level: number): number => {
     return level <= 3 ? damage.level3 : damage.level6;
 };
 
+// Estimate ultimate damage for champions (at level 6)
+const estimateUltimateDamage = (championName: string, isADC: boolean): number => {
+    // ADC ultimates typically do 200-400 damage at level 6
+    // Support ultimates vary - some are utility, some do damage
+    if (isADC) {
+        const adcUltDamage: { [key: string]: number } = {
+            'Jinx': 300, // Super Mega Death Rocket
+            'Caitlyn': 350, // Ace in the Hole
+            'Ezreal': 350, // Trueshot Barrage
+            'Lucian': 400, // The Culling
+            'Vayne': 0, // Utility ult
+            'Ashe': 250, // Enchanted Crystal Arrow
+            'Varus': 300, // Chain of Corruption
+            'Tristana': 300, // Buster Shot
+            'KogMaw': 280, // Living Artillery
+            'Twitch': 250, // Spray and Pray (DPS ult)
+        };
+        return adcUltDamage[championName] || 300;
+    } else {
+        // Support ultimates - many are utility, but some do damage
+        const supportUltDamage: { [key: string]: number } = {
+            'Lulu': 0, // Utility
+            'Janna': 0, // Utility
+            'Karma': 250, // Mantra Q
+            'Nami': 200, // Tidal Wave
+            'Soraka': 0, // Utility
+            'Thresh': 250, // The Box
+            'Blitzcrank': 300, // Static Field
+            'Nautilus': 200, // Depth Charge
+            'Leona': 200, // Solar Flare
+            'Pyke': 0, // Execute (handled separately)
+        };
+        return supportUltDamage[championName] || 200;
+    }
+};
+
 // Calculate bot lane damage comparison
 const calculateBotLaneDamage = (
     enemyADC: Champion | null,
@@ -449,21 +485,37 @@ const calculateBotLaneDamage = (
     pykeDamage: DamageAnalysis
 ): BotLaneDamageComparison => {
     // Enemy combo: Enemy Bot + Enemy Support
-    const enemyLevel3 = (enemyADC ? estimateADCDamage(enemyADC.id, 3) : 0) + 
-                        (enemySupport ? estimateSupportDamage(enemySupport.id, 3) : 0);
-    const enemyLevel6 = (enemyADC ? estimateADCDamage(enemyADC.id, 6) : 0) + 
-                        (enemySupport ? estimateSupportDamage(enemySupport.id, 6) : 0);
+    const enemyADCLevel3 = enemyADC ? estimateADCDamage(enemyADC.id, 3) : 200;
+    const enemySupportLevel3 = enemySupport ? estimateSupportDamage(enemySupport.id, 3) : 150;
+    const enemyLevel3 = enemyADCLevel3 + enemySupportLevel3;
+    
+    const enemyADCLevel6 = enemyADC ? estimateADCDamage(enemyADC.id, 6) : 350;
+    const enemySupportLevel6 = enemySupport ? estimateSupportDamage(enemySupport.id, 6) : 250;
+    const enemyLevel6 = enemyADCLevel6 + enemySupportLevel6;
+    
+    // Enemy level 6 with ultimates
+    const enemyADCUlt = enemyADC ? estimateUltimateDamage(enemyADC.id, true) : 300;
+    const enemySupportUlt = enemySupport ? estimateUltimateDamage(enemySupport.id, false) : 200;
+    const enemyLevel6WithUlt = enemyLevel6 + enemyADCUlt + enemySupportUlt;
     
     // Your combo: Your Bot + Pyke (Support)
-    const yourADCLevel3 = yourADC ? estimateADCDamage(yourADC.id, 3) : 180; // Default if not selected
-    const yourADCLevel6 = yourADC ? estimateADCDamage(yourADC.id, 6) : 320; // Default if not selected
+    const yourADCLevel3 = yourADC ? estimateADCDamage(yourADC.id, 3) : 200; // Default if not selected
+    const yourADCLevel6 = yourADC ? estimateADCDamage(yourADC.id, 6) : 350; // Default if not selected
+    const yourADCUlt = yourADC ? estimateUltimateDamage(yourADC.id, true) : 300;
     
     const yourLevel3 = pykeDamage.level3Combo + yourADCLevel3;
     const yourLevel6 = pykeDamage.level6Combo + yourADCLevel6;
-    const yourLevel6Ult = pykeDamage.level6WithUlt + yourADCLevel6;
+    const yourLevel6WithUlt = pykeDamage.level6WithUlt + yourADCLevel6 + yourADCUlt;
     
-    const advantage = yourLevel6Ult > enemyLevel6 ? 'FAVORABLE' : 
-                     yourLevel6 > enemyLevel6 ? 'EVEN' : 'UNFAVORABLE';
+    // Compare like-for-like: no ult vs no ult, ult vs ult
+    // Advantage is based on both scenarios
+    const advantageNoUlt = yourLevel6 > enemyLevel6 ? 1 : yourLevel6 < enemyLevel6 ? -1 : 0;
+    const advantageWithUlt = yourLevel6WithUlt > enemyLevel6WithUlt ? 1 : yourLevel6WithUlt < enemyLevel6WithUlt ? -1 : 0;
+    
+    // Overall advantage: if both favor us, favorable; if both favor them, unfavorable; otherwise even
+    const totalAdvantage = advantageNoUlt + advantageWithUlt;
+    const advantage = totalAdvantage > 0 ? 'FAVORABLE' : 
+                     totalAdvantage < 0 ? 'UNFAVORABLE' : 'EVEN';
     
     return {
         enemyCombo: {
@@ -474,16 +526,17 @@ const calculateBotLaneDamage = (
         yourCombo: {
             level3: Math.round(yourLevel3),
             level6: Math.round(yourLevel6),
-            level6WithUlt: Math.round(yourLevel6Ult),
+            level6WithUlt: Math.round(yourLevel6WithUlt),
             description: `${yourADC?.name || 'Your ADC'} + Pyke`
         },
         advantage,
         notes: [
             `Enemy 2v2 damage at level 3: ~${Math.round(enemyLevel3)}`,
             `Your 2v2 damage at level 3: ~${Math.round(yourLevel3)}`,
-            `Enemy 2v2 damage at level 6: ~${Math.round(enemyLevel6)}`,
-            `Your 2v2 damage at level 6: ~${Math.round(yourLevel6)}`,
-            `Your 2v2 damage at level 6 with ult: ~${Math.round(yourLevel6Ult)}`,
+            `Enemy 2v2 damage at level 6 (no ults): ~${Math.round(enemyLevel6)}`,
+            `Your 2v2 damage at level 6 (no ults): ~${Math.round(yourLevel6)}`,
+            `Enemy 2v2 damage at level 6 (with ults): ~${Math.round(enemyLevel6WithUlt)}`,
+            `Your 2v2 damage at level 6 (with ults): ~${Math.round(yourLevel6WithUlt)}`,
             advantage === 'FAVORABLE' ? 'You win extended 2v2 trades' :
             advantage === 'EVEN' ? '2v2 trades are skill-dependent' :
             'Avoid extended 2v2 trades, look for picks'

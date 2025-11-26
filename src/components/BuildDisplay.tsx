@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Build, RunePage, Item, MatchupAnalysis } from '../logic/pykeLogic';
+import { getRuneIconUrl } from '../data/runeService';
 
 interface Props {
     build: Build;
@@ -29,20 +30,35 @@ const ItemIcon: React.FC<{ item: Item; size?: string }> = ({ item, size = "w-12 
     </div>
 );
 
-const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: string }> = ({ name, iconPath, reason }) => (
-    <div className="group relative">
-        <img
-            src={iconPath}
-            alt={name}
-            className="w-8 h-8 rounded-full border border-slate-600 group-hover:border-pyke-green transition-colors cursor-help"
-        />
-        {/* Tooltip */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/95 border border-pyke-green text-slate-200 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg shadow-pyke-green/20">
-            <div className="font-bold text-pyke-green mb-1">{name}</div>
-            <div>{reason || "Standard Pyke rune."}</div>
+const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: string }> = ({ id, name, iconPath, reason }) => {
+    // Use official Data Dragon API for rune icons
+    const runeIconUrl = getRuneIconUrl(id);
+    
+    return (
+        <div className="group relative">
+            <img
+                src={runeIconUrl}
+                alt={name}
+                className="w-8 h-8 rounded-full border border-slate-600 group-hover:border-pyke-green transition-colors cursor-help"
+                onError={(e) => {
+                    // Fallback to the provided iconPath if Data Dragon fails
+                    const target = e.target as HTMLImageElement;
+                    if (target.src !== iconPath) {
+                        target.src = iconPath;
+                    } else {
+                        // Final fallback to a generic stat shard icon
+                        target.src = 'https://ddragon.leagueoflegends.com/cdn/15.1.1/img/perk/5001.png';
+                    }
+                }}
+            />
+            {/* Tooltip */}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/95 border border-pyke-green text-slate-200 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg shadow-pyke-green/20">
+                <div className="font-bold text-pyke-green mb-1">{name}</div>
+                <div>{reason || "Standard Pyke rune."}</div>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport, canExport, exportStatus }) => {
     return (
