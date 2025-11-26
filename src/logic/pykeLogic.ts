@@ -315,6 +315,23 @@ export interface BotLaneMatchup {
     lanePhase: string;
     allInPotential: string;
     keyCooldowns: string[];
+    damageComparison?: BotLaneDamageComparison;
+}
+
+export interface BotLaneDamageComparison {
+    enemyCombo: {
+        level3: number;
+        level6: number;
+        description: string;
+    };
+    yourCombo: {
+        level3: number;
+        level6: number;
+        level6WithUlt: number;
+        description: string;
+    };
+    advantage: string;
+    notes: string[];
 }
 
 export interface DamageAnalysis {
@@ -385,8 +402,95 @@ const calculatePykeDamage = (_level: number, hasUlt: boolean, bonusAd: number = 
     };
 };
 
+// Estimate damage for common ADC abilities (simplified)
+const estimateADCDamage = (adcName: string, level: number): number => {
+    // Base damage estimates for common ADCs at different levels
+    const adcDamage: { [key: string]: { level3: number; level6: number } } = {
+        'Jinx': { level3: 180, level6: 320 },
+        'Caitlyn': { level3: 200, level6: 380 },
+        'Ezreal': { level3: 220, level6: 400 },
+        'Lucian': { level3: 250, level6: 450 },
+        'Vayne': { level3: 200, level6: 380 },
+        'Ashe': { level3: 180, level6: 320 },
+        'Varus': { level3: 200, level6: 360 },
+        'Tristana': { level3: 240, level6: 420 },
+        'KogMaw': { level3: 190, level6: 340 },
+        'Twitch': { level3: 200, level6: 360 },
+    };
+    
+    const damage = adcDamage[adcName] || { level3: 200, level6: 350 };
+    return level <= 3 ? damage.level3 : damage.level6;
+};
+
+// Estimate damage for common support abilities
+const estimateSupportDamage = (supportName: string, level: number): number => {
+    const supportDamage: { [key: string]: { level3: number; level6: number } } = {
+        'Lulu': { level3: 120, level6: 200 },
+        'Janna': { level3: 100, level6: 180 },
+        'Karma': { level3: 180, level6: 300 },
+        'Nami': { level3: 150, level6: 250 },
+        'Soraka': { level3: 80, level6: 140 },
+        'Thresh': { level3: 200, level6: 350 },
+        'Blitzcrank': { level3: 220, level6: 380 },
+        'Nautilus': { level3: 200, level6: 350 },
+        'Leona': { level3: 180, level6: 320 },
+        'Pyke': { level3: 250, level6: 450 },
+    };
+    
+    const damage = supportDamage[supportName] || { level3: 150, level6: 250 };
+    return level <= 3 ? damage.level3 : damage.level6;
+};
+
+// Calculate bot lane damage comparison
+const calculateBotLaneDamage = (
+    enemyADC: Champion | null,
+    enemySupport: Champion | null,
+    pykeDamage: DamageAnalysis
+): BotLaneDamageComparison => {
+    const enemyLevel3 = (enemyADC ? estimateADCDamage(enemyADC.id, 3) : 0) + 
+                        (enemySupport ? estimateSupportDamage(enemySupport.id, 3) : 0);
+    const enemyLevel6 = (enemyADC ? estimateADCDamage(enemyADC.id, 6) : 0) + 
+                        (enemySupport ? estimateSupportDamage(enemySupport.id, 6) : 0);
+    
+    // Your combo includes Pyke + estimated ADC damage (assuming standard ADC)
+    const yourADCLevel3 = 180; // Average ADC damage at level 3
+    const yourADCLevel6 = 320; // Average ADC damage at level 6
+    
+    const yourLevel3 = pykeDamage.level3Combo + yourADCLevel3;
+    const yourLevel6 = pykeDamage.level6Combo + yourADCLevel6;
+    const yourLevel6Ult = pykeDamage.level6WithUlt + yourADCLevel6;
+    
+    const advantage = yourLevel6Ult > enemyLevel6 ? 'FAVORABLE' : 
+                     yourLevel6 > enemyLevel6 ? 'EVEN' : 'UNFAVORABLE';
+    
+    return {
+        enemyCombo: {
+            level3: Math.round(enemyLevel3),
+            level6: Math.round(enemyLevel6),
+            description: `${enemyADC?.name || 'ADC'} + ${enemySupport?.name || 'Support'} combo`
+        },
+        yourCombo: {
+            level3: Math.round(yourLevel3),
+            level6: Math.round(yourLevel6),
+            level6WithUlt: Math.round(yourLevel6Ult),
+            description: 'Pyke + ADC combo'
+        },
+        advantage,
+        notes: [
+            `Enemy 2v2 damage at level 3: ~${Math.round(enemyLevel3)}`,
+            `Your 2v2 damage at level 3: ~${Math.round(yourLevel3)}`,
+            `Enemy 2v2 damage at level 6: ~${Math.round(enemyLevel6)}`,
+            `Your 2v2 damage at level 6: ~${Math.round(yourLevel6)}`,
+            `Your 2v2 damage at level 6 with ult: ~${Math.round(yourLevel6Ult)}`,
+            advantage === 'FAVORABLE' ? 'You win extended 2v2 trades' :
+            advantage === 'EVEN' ? '2v2 trades are skill-dependent' :
+            'Avoid extended 2v2 trades, look for picks'
+        ]
+    };
+};
+
 // Analyze bot lane matchup specifically
-const analyzeBotLaneMatchup = (enemyTeam: Champion[]): BotLaneMatchup | null => {
+const analyzeBotLaneMatchup = (enemyTeam: Champion[], pykeDamage?: DamageAnalysis): BotLaneMatchup | null => {
     const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman')) || null;
     const enemySupport = enemyTeam.find(c => c.tags.includes('Support')) || null;
     
@@ -450,7 +554,7 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[]): BotLaneMatchup | null => 
         }
     }
     
-    return {
+    const matchup: BotLaneMatchup = {
         enemyADC,
         enemySupport,
         matchupDifficulty: difficulty,
@@ -458,6 +562,13 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[]): BotLaneMatchup | null => 
         allInPotential: allInPotential || 'MODERATE: Standard all-in potential.',
         keyCooldowns
     };
+    
+    // Add damage comparison if we have Pyke damage data
+    if (pykeDamage) {
+        matchup.damageComparison = calculateBotLaneDamage(enemyADC, enemySupport, pykeDamage);
+    }
+    
+    return matchup;
 };
 
 export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAnalysis => {
@@ -535,16 +646,17 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAna
         ];
     }
 
-    // Add bot lane specific analysis
-    const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam);
+    // Add damage analysis first
+    const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
+    const bonusAd = hasUmbral ? 0 : 0; // No items at level 6 typically
+    const pykeDamage = calculatePykeDamage(6, true, bonusAd);
+    analysis.damageAnalysis = pykeDamage;
+    
+    // Add bot lane specific analysis (with damage comparison)
+    const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam, pykeDamage);
     if (botLaneMatchup) {
         analysis.botLaneMatchup = botLaneMatchup;
     }
-    
-    // Add damage analysis
-    const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
-    const bonusAd = hasUmbral ? 0 : 0; // No items at level 6 typically
-    analysis.damageAnalysis = calculatePykeDamage(6, true, bonusAd);
     
     return analysis;
 };
