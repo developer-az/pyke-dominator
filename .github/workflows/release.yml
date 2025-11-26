@@ -34,11 +34,21 @@ jobs:
         run: npx electron-builder --publish never --win nsis
 
       - name: List release files
+        shell: pwsh
         run: |
-          echo "Release directory contents:"
-          ls -la release/ || dir release\
-          echo "Looking for .exe files:"
-          find release -name "*.exe" -type f || echo "No .exe files found"
+          Write-Host "Release directory contents:"
+          if (Test-Path "release") {
+            Get-ChildItem -Path "release" -Recurse | Format-Table Name, Length, FullName
+            Write-Host "Looking for .exe files:"
+            $exeFiles = Get-ChildItem -Path "release" -Filter "*.exe" -Recurse
+            if ($exeFiles) {
+              $exeFiles | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            } else {
+              Write-Host "No .exe files found"
+            }
+          } else {
+            Write-Host "Release directory does not exist"
+          }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
