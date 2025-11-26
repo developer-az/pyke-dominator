@@ -13,12 +13,36 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
     const displayRoles = roles || ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
     const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({});
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
+    const [dropdownPositions, setDropdownPositions] = useState<{ [key: string]: { top: number; left: number; width: number } | null }>({});
     const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
     const handleSearch = (role: string, value: string) => {
         setSearchTerms(prev => ({ ...prev, [role]: value }));
         setOpenDropdowns(prev => ({ ...prev, [role]: true }));
     };
+
+    // Update dropdown positions when they open
+    useEffect(() => {
+        Object.keys(openDropdowns).forEach(role => {
+            if (openDropdowns[role]) {
+                const ref = dropdownRefs.current[role];
+                const inputElement = ref?.querySelector('input');
+                if (inputElement) {
+                    const rect = inputElement.getBoundingClientRect();
+                    setDropdownPositions(prev => ({
+                        ...prev,
+                        [role]: {
+                            top: rect.bottom + window.scrollY + 4,
+                            left: rect.left + window.scrollX,
+                            width: rect.width
+                        }
+                    }));
+                }
+            } else {
+                setDropdownPositions(prev => ({ ...prev, [role]: null }));
+            }
+        });
+    }, [openDropdowns]);
 
     const selectChampion = (role: string, champion: Champion) => {
         onSelectionChange(role, champion);
@@ -112,11 +136,9 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                             </div>
 
                             {/* Dropdown List - Using Portal to render at document root */}
-                            {isOpen && (() => {
-                                const inputElement = dropdownRefs.current[role]?.querySelector('input');
-                                const rect = inputElement?.getBoundingClientRect();
-                                
-                                if (!rect) return null;
+                            {isOpen && dropdownPositions[role] && (() => {
+                                const pos = dropdownPositions[role];
+                                if (!pos) return null;
                                 
                                 const dropdownContent = (
                                     <div 
@@ -124,9 +146,9 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                                         style={{ 
                                             position: 'fixed',
                                             zIndex: 999999,
-                                            top: `${rect.bottom + window.scrollY + 4}px`,
-                                            left: `${rect.left + window.scrollX}px`,
-                                            width: `${rect.width}px`,
+                                            top: `${pos.top}px`,
+                                            left: `${pos.left}px`,
+                                            width: `${pos.width}px`,
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                     >
