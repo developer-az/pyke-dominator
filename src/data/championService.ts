@@ -1,7 +1,20 @@
 import type { Champion } from '../logic/pykeLogic';
 
-const DDRAGON_VERSION = '14.23.1';
+// Try to fetch latest version, fallback to a recent version
+let DDRAGON_VERSION = '15.1.1'; // Updated to Season 15
 const DDRAGON_URL = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/data/en_US/champion.json`;
+
+// Function to fetch latest version (can be called on app start)
+export const fetchLatestVersion = async (): Promise<string> => {
+    try {
+        const response = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+        const versions = await response.json();
+        return versions[0]; // Latest version is first in array
+    } catch (error) {
+        console.warn('Failed to fetch latest version, using fallback:', error);
+        return DDRAGON_VERSION;
+    }
+};
 
 export const fetchChampions = async (): Promise<Champion[]> => {
     try {

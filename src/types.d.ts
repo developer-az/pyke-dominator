@@ -6,6 +6,9 @@ declare global {
             connectLCU: () => Promise<{ success: boolean; credentials?: any; error?: string }>;
             requestLCU: (method: string, endpoint: string, body?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
             onUpdate: (callback: (value: any) => void) => void;
+            windowMinimize: () => Promise<void>;
+            windowMaximize: () => Promise<void>;
+            windowClose: () => Promise<void>;
         };
     }
 }

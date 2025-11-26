@@ -13,6 +13,8 @@ function createWindow() {
     win = new BrowserWindow({
         width: 1200,
         height: 800,
+        minWidth: 800,
+        minHeight: 600,
         icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -20,11 +22,13 @@ function createWindow() {
             contextIsolation: true,
         },
         backgroundColor: '#0a1116',
+        frame: false,
+        transparent: false,
         titleBarStyle: 'hidden',
         titleBarOverlay: {
             color: '#0a1116',
             symbolColor: '#00ff9d',
-            height: 30
+            height: 40
         }
     });
 
@@ -84,5 +88,24 @@ app.whenReady().then(() => {
         } catch (error: any) {
             return { success: false, error: error.message };
         }
+    });
+
+    // Window Controls
+    ipcMain.handle('window-minimize', () => {
+        if (win) win.minimize();
+    });
+
+    ipcMain.handle('window-maximize', () => {
+        if (win) {
+            if (win.isMaximized()) {
+                win.unmaximize();
+            } else {
+                win.maximize();
+            }
+        }
+    });
+
+    ipcMain.handle('window-close', () => {
+        if (win) win.close();
     });
 });

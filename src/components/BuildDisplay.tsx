@@ -13,9 +13,13 @@ interface Props {
 const ItemIcon: React.FC<{ item: Item; size?: string }> = ({ item, size = "w-12 h-12" }) => (
     <div className="group relative">
         <img
-            src={`https://ddragon.leagueoflegends.com/cdn/14.23.1/img/item/${item.id}.png`}
+            src={`https://ddragon.leagueoflegends.com/cdn/15.1.1/img/item/${item.id}.png`}
             alt={item.name}
-            className={`${size} rounded border border-slate-600 group-hover:border-pyke-green transition-colors cursor-help`}
+            className={`${size} rounded border border-slate-600 group-hover:border-pyke-green transition-all duration-200 cursor-help shadow-lg group-hover:shadow-pyke-green/20`}
+            onError={(e) => {
+                // Fallback to a generic item icon if image fails to load
+                (e.target as HTMLImageElement).src = 'https://ddragon.leagueoflegends.com/cdn/15.1.1/img/item/1001.png';
+            }}
         />
         {/* Tooltip */}
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/95 border border-pyke-green text-slate-200 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg shadow-pyke-green/20">
@@ -44,27 +48,30 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
     return (
         <div className="space-y-8 animate-fade-in">
             {/* Header */}
-            <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-                <h2 className="text-2xl font-display text-pyke-green tracking-widest uppercase">Dominator Loadout</h2>
+            <div className="flex justify-between items-center border-b border-slate-700/50 pb-4">
+                <h2 className="text-2xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_8px_rgba(0,255,157,0.3)]">Dominator Loadout</h2>
                 {canExport && (
                     <button
                         onClick={onExport}
                         disabled={exportStatus !== 'idle'}
-                        className={`px-4 py-2 rounded border transition-all uppercase font-bold text-sm tracking-wider ${exportStatus === 'success' ? 'bg-green-500 text-black border-green-500' :
-                            exportStatus === 'error' ? 'bg-red-500 text-white border-red-500' :
-                                'bg-pyke-accent hover:bg-pyke-green hover:text-black text-pyke-green border-pyke-green'
-                            }`}
+                        className={`px-5 py-2.5 rounded-lg border-2 transition-all duration-200 uppercase font-bold text-sm tracking-wider shadow-lg ${
+                            exportStatus === 'success' 
+                                ? 'bg-green-500 text-black border-green-500 shadow-green-500/30' 
+                                : exportStatus === 'error' 
+                                    ? 'bg-red-500 text-white border-red-500 shadow-red-500/30' 
+                                    : 'bg-slate-800/80 hover:bg-pyke-green hover:text-black text-pyke-green border-pyke-green hover:shadow-pyke-green/30 hover:scale-105 active:scale-95'
+                        }`}
                     >
-                        {exportStatus === 'success' ? 'Exported!' :
-                            exportStatus === 'error' ? 'Failed' :
-                                'Export to Client'}
+                        {exportStatus === 'success' ? '✓ Exported!' :
+                            exportStatus === 'error' ? '✕ Failed' :
+                                '→ Export to Client'}
                     </button>
                 )}
             </div>
 
             {/* STRATEGIC ANALYSIS SECTION */}
-            <div className="bg-slate-900/80 border border-pyke-green/30 p-6 rounded-lg relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
+            <div className="bg-slate-900/70 border border-pyke-green/30 p-6 rounded-xl relative overflow-hidden backdrop-blur-sm shadow-xl hover:border-pyke-green/50 transition-all duration-300">
+                <div className="absolute top-0 right-0 p-4 opacity-5">
                     <h1 className="text-9xl font-black text-pyke-green">?</h1>
                 </div>
 
@@ -121,8 +128,10 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Items Section */}
-                <div className="space-y-6">
-                    <h3 className="text-xl text-slate-300 font-bold">Item Build</h3>
+                <div className="space-y-6 bg-slate-900/40 p-6 rounded-xl border border-slate-800/50 backdrop-blur-sm">
+                    <h3 className="text-xl text-slate-300 font-bold flex items-center gap-2">
+                        <span className="text-pyke-green">⚔</span> Item Build
+                    </h3>
 
                     {/* Full Build Path */}
                     <div className="space-y-2">
@@ -164,8 +173,10 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                 </div>
 
                 {/* Runes Section */}
-                <div className="space-y-6">
-                    <h3 className="text-xl text-slate-300 font-bold">Runes Reforged</h3>
+                <div className="space-y-6 bg-slate-900/40 p-6 rounded-xl border border-slate-800/50 backdrop-blur-sm">
+                    <h3 className="text-xl text-slate-300 font-bold flex items-center gap-2">
+                        <span className="text-pyke-green">✨</span> Runes Reforged
+                    </h3>
 
                     <div className="bg-pyke-accent/20 p-4 rounded border border-slate-700">
                         <div className="flex justify-between items-center mb-4">

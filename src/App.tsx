@@ -23,7 +23,17 @@ const App: React.FC = () => {
 
   // Fetch Champions
   useEffect(() => {
-    fetch('https://ddragon.leagueoflegends.com/cdn/14.23.1/data/en_US/champion.json')
+    // Try to fetch latest version first
+    fetch('https://ddragon.leagueoflegends.com/api/versions.json')
+      .then(res => res.json())
+      .then(versions => {
+        const latestVersion = versions[0] || '15.1.1';
+        return fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`);
+      })
+      .catch(() => {
+        // Fallback to known version
+        return fetch('https://ddragon.leagueoflegends.com/cdn/15.1.1/data/en_US/champion.json');
+      })
       .then(res => res.json())
       .then(data => {
         const list: Champion[] = Object.values(data.data).map((c: any) => ({
@@ -34,6 +44,9 @@ const App: React.FC = () => {
           damageType: c.tags.includes('Mage') || c.tags.includes('Support') ? 'Magic' : 'Physical' // Simplified approximation
         }));
         setChampions(list);
+      })
+      .catch(error => {
+        console.error('Failed to fetch champions:', error);
       });
   }, []);
 
@@ -140,24 +153,102 @@ const App: React.FC = () => {
     }
   };
 
+  const handleMinimize = () => {
+    if (window.electronAPI) {
+      window.electronAPI.windowMinimize();
+    }
+  };
+
+  const handleMaximize = () => {
+    if (window.electronAPI) {
+      window.electronAPI.windowMaximize();
+    }
+  };
+
+  const handleClose = () => {
+    if (window.electronAPI) {
+      window.electronAPI.windowClose();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-pyke-dark text-slate-300 font-sans selection:bg-pyke-green selection:text-black">
-      <div className="container mx-auto p-6 max-w-7xl">
+      {/* Draggable Title Bar */}
+      {window.electronAPI && (
+        <div 
+          className="h-10 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-900/95 border-b border-slate-800/80 flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50 backdrop-blur-sm shadow-lg"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          <div className="flex items-center gap-2 text-xs text-slate-300 font-semibold">
+            <span className="text-pyke-green text-base">⚔</span>
+            <span className="tracking-wider">Pyke Dominator</span>
+          </div>
+          <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <button
+              onClick={handleMinimize}
+              className="w-10 h-10 flex items-center justify-center hover:bg-slate-800/80 rounded transition-all duration-150 text-slate-400 hover:text-white active:bg-slate-700"
+              title="Minimize"
+            >
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="0" y1="6" x2="12" y2="6" />
+              </svg>
+            </button>
+            <button
+              onClick={handleMaximize}
+              className="w-10 h-10 flex items-center justify-center hover:bg-slate-800/80 rounded transition-all duration-150 text-slate-400 hover:text-white active:bg-slate-700"
+              title="Maximize / Restore"
+            >
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="8" height="8" />
+              </svg>
+            </button>
+            <button
+              onClick={handleClose}
+              className="w-10 h-10 flex items-center justify-center hover:bg-red-500/20 rounded transition-all duration-150 text-slate-400 hover:text-red-400 hover:bg-red-500/30 active:bg-red-500/40"
+              title="Close"
+            >
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="2" y1="2" x2="10" y2="10" />
+                <line x1="10" y1="2" x2="2" y2="10" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+      <div className={`container mx-auto p-6 max-w-7xl ${window.electronAPI ? 'pt-16' : ''}`}>
         {/* Header */}
-        <header className="flex justify-between items-center mb-10 border-b border-slate-800 pb-6">
+        <header className="flex justify-between items-center mb-10 border-b border-slate-800 pb-6 animate-fade-in">
           <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_10px_rgba(72,191,145,0.3)]">
+            <h1 className="text-4xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_10px_rgba(0,255,157,0.4)] hover:drop-shadow-[0_0_15px_rgba(0,255,157,0.6)] transition-all duration-300">
               Pyke Dominator
             </h1>
-            <span className="px-2 py-0.5 rounded text-xs font-bold bg-slate-800 text-slate-500 border border-slate-700">
+            <span className="px-3 py-1 rounded-md text-xs font-bold bg-slate-800/80 text-slate-400 border border-slate-700/50 backdrop-blur-sm">
               V1.0.0
             </span>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${lcuConnected ? 'border-green-500/50 bg-green-500/10' : (!window.electronAPI ? 'border-blue-500/50 bg-blue-500/10' : 'border-red-500/50 bg-red-500/10')}`}>
-              <div className={`w-2 h-2 rounded-full ${lcuConnected ? 'bg-green-500 animate-pulse' : (!window.electronAPI ? 'bg-blue-500' : 'bg-red-500')}`}></div>
-              <span className={`text-xs font-bold uppercase tracking-wider ${lcuConnected ? 'text-green-400' : (!window.electronAPI ? 'text-blue-400' : 'text-red-400')}`}>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border backdrop-blur-sm transition-all duration-300 ${
+              lcuConnected 
+                ? 'border-green-500/50 bg-green-500/10 shadow-lg shadow-green-500/10' 
+                : (!window.electronAPI 
+                  ? 'border-blue-500/50 bg-blue-500/10 shadow-lg shadow-blue-500/10' 
+                  : 'border-red-500/50 bg-red-500/10 shadow-lg shadow-red-500/10')
+            }`}>
+              <div className={`w-2.5 h-2.5 rounded-full transition-all ${
+                lcuConnected 
+                  ? 'bg-green-500 animate-pulse shadow-lg shadow-green-500/50' 
+                  : (!window.electronAPI 
+                    ? 'bg-blue-500 shadow-lg shadow-blue-500/50' 
+                    : 'bg-red-500 shadow-lg shadow-red-500/50')
+              }`}></div>
+              <span className={`text-xs font-bold uppercase tracking-wider ${
+                lcuConnected 
+                  ? 'text-green-400' 
+                  : (!window.electronAPI 
+                    ? 'text-blue-400' 
+                    : 'text-red-400')
+              }`}>
                 {lcuConnected ? 'Live Link Active' : (!window.electronAPI ? 'Web Mode (Demo)' : 'Client Disconnected')}
               </span>
             </div>
@@ -166,10 +257,10 @@ const App: React.FC = () => {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
           {/* Left Panel: Enemy Selection */}
-          <div className="xl:col-span-3 space-y-6">
-            <div className="bg-slate-900/50 p-6 rounded-lg border border-slate-800 backdrop-blur-sm">
+          <div className="xl:col-span-3 space-y-6 animate-slide-in">
+            <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800/80 backdrop-blur-md shadow-xl hover:border-slate-700/80 transition-all duration-300">
               <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
-                <span className="text-pyke-green">///</span> Enemy Composition
+                <span className="text-pyke-green text-2xl">///</span> Enemy Composition
               </h2>
               <ChampionSelect
                 champions={champions}
@@ -191,10 +282,10 @@ const App: React.FC = () => {
                 exportStatus={exportStatus}
               />
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-lg p-12 bg-slate-900/30">
-                <div className="text-6xl mb-4 opacity-20">⚔️</div>
-                <p className="text-xl font-display tracking-wider">Awaiting Enemy Intelligence...</p>
-                <p className="text-sm mt-2">Select enemy champions to generate your loadout.</p>
+              <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800/50 rounded-xl p-12 bg-slate-900/20 backdrop-blur-sm animate-fade-in">
+                <div className="text-6xl mb-4 opacity-30 animate-pulse">⚔️</div>
+                <p className="text-xl font-display tracking-wider text-slate-500">Awaiting Enemy Intelligence...</p>
+                <p className="text-sm mt-2 text-slate-600">Select enemy champions to generate your loadout.</p>
               </div>
             )}
           </div>

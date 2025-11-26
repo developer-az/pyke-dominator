@@ -17,6 +17,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   @apply bg-slate-900 text-slate-100;
+  overflow-x: hidden;
 }
 
 /* Custom Scrollbar */
@@ -29,7 +30,65 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #334155; 
   border-radius: 4px;
+  transition: background 0.2s;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569; 
+  background: #00ff9d; 
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 255, 157, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 255, 157, 0.6);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.4s ease-out;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, transform, opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Selection styling */
+::selection {
+  background-color: rgba(0, 255, 157, 0.3);
+  color: #00ff9d;
 }
