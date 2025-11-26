@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Champion } from '../logic/pykeLogic';
 
 interface Props {
@@ -45,8 +46,13 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
         const handleClickOutside = (event: MouseEvent) => {
             Object.keys(dropdownRefs.current).forEach(role => {
                 const ref = dropdownRefs.current[role];
-                if (ref && !ref.contains(event.target as Node)) {
-                    setOpenDropdowns(prev => ({ ...prev, [role]: false }));
+                const target = event.target as Node;
+                // Check if click is outside the input/container AND outside any portal dropdown
+                if (ref && !ref.contains(target)) {
+                    const portalDropdown = document.querySelector('[style*="z-index: 999999"]');
+                    if (!portalDropdown || !portalDropdown.contains(target)) {
+                        setOpenDropdowns(prev => ({ ...prev, [role]: false }));
+                    }
                 }
             });
         };
@@ -105,42 +111,51 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                                 )}
                             </div>
 
-                            {/* Dropdown List */}
-                            {isOpen && (
-                                <div 
-                                    className="absolute w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto"
-                                    style={{ 
-                                        position: 'absolute',
-                                        zIndex: 10000,
-                                        isolation: 'isolate',
-                                        top: '100%',
-                                        left: 0,
-                                        right: 0
-                                    }}
-                                >
-                                    {filteredChampions.length === 0 ? (
-                                        <div className="p-3 text-sm text-slate-400 text-center">
-                                            No champions found
-                                        </div>
-                                    ) : (
-                                        <div className="py-1">
-                                            {filteredChampions.map((champion) => (
-                                                <button
-                                                    key={champion.id}
-                                                    type="button"
-                                                    className="w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors flex items-center gap-2"
-                                                    onClick={() => selectChampion(role, champion)}
-                                                >
-                                                    <span className="text-white text-sm">{champion.name}</span>
-                                                    <span className="text-xs text-slate-500 ml-auto">
-                                                        {champion.tags[0]}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Dropdown List - Using Portal to render at document root */}
+                            {isOpen && (() => {
+                                const inputElement = dropdownRefs.current[role]?.querySelector('input');
+                                const rect = inputElement?.getBoundingClientRect();
+                                
+                                if (!rect) return null;
+                                
+                                const dropdownContent = (
+                                    <div 
+                                        className="fixed bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto"
+                                        style={{ 
+                                            position: 'fixed',
+                                            zIndex: 999999,
+                                            top: `${rect.bottom + window.scrollY + 4}px`,
+                                            left: `${rect.left + window.scrollX}px`,
+                                            width: `${rect.width}px`,
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {filteredChampions.length === 0 ? (
+                                            <div className="p-3 text-sm text-slate-400 text-center">
+                                                No champions found
+                                            </div>
+                                        ) : (
+                                            <div className="py-1">
+                                                {filteredChampions.map((champion) => (
+                                                    <button
+                                                        key={champion.id}
+                                                        type="button"
+                                                        className="w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors flex items-center gap-2"
+                                                        onClick={() => selectChampion(role, champion)}
+                                                    >
+                                                        <span className="text-white text-sm">{champion.name}</span>
+                                                        <span className="text-xs text-slate-500 ml-auto">
+                                                            {champion.tags[0]}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                                
+                                return createPortal(dropdownContent, document.body);
+                            })()}
                         </div>
 
                         {/* Selected Champion Info */}
