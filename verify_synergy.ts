@@ -1,5 +1,5 @@
 
-import { calculateBuild, calculateRunes, analyzeMatchup, Champion } from './src/logic/pykeLogic';
+import { analyzeMatchup, Champion } from './src/logic/pykeLogic';
 
 // Scenario 1: Control Mode (Vs Tanks)
 const tankTeam: Champion[] = [

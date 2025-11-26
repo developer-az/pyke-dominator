@@ -461,10 +461,10 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[]): BotLaneMatchup | null => 
 };
 
 export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAnalysis => {
-    let squishies: string[] = [];
-    let tanks: string[] = [];
-    let ccHeavy: string[] = [];
-    let pokeHeavy: string[] = [];
+    const squishies: string[] = [];
+    const tanks: string[] = [];
+    const ccHeavy: string[] = [];
+    const pokeHeavy: string[] = [];
 
     enemyTeam.forEach(c => {
         if (c.tags.includes('Marksman') || c.tags.includes('Mage') || c.tags.includes('Assassin')) {
@@ -476,7 +476,7 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAna
     });
 
     // Determine Strategy
-    let analysis: MatchupAnalysis = {
+    const analysis: MatchupAnalysis = {
         title: "Balanced Skirmisher",
         description: "Look for hooks on mispositioned carries. Play around your cooldowns.",
         winCondition: "Catch enemies rotating through the jungle.",

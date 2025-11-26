@@ -76,8 +76,9 @@ app.whenReady().then(() => {
         try {
             const credentials = await connectToLCU();
             return { success: true, credentials };
-        } catch (error: any) {
-            return { success: false, error: error.message };
+        } catch (error: unknown) {
+            const err = error as { message?: string };
+            return { success: false, error: err.message || 'Unknown error' };
         }
     });
 
@@ -91,13 +92,14 @@ app.whenReady().then(() => {
             }
             
             return { success: true, data: response };
-        } catch (error: any) {
+        } catch (error: unknown) {
             // Don't log 404 errors as they're expected
-            const is404 = error.response?.status === 404 || error.message?.includes('404');
+            const err = error as { response?: { status?: number }; message?: string };
+            const is404 = err.response?.status === 404 || err.message?.includes('404');
             if (!is404) {
-                console.error('LCU Request Error:', error.message);
+                console.error('LCU Request Error:', err.message || 'Unknown error');
             }
-            return { success: false, error: error.message || 'Unknown error' };
+            return { success: false, error: err.message || 'Unknown error' };
         }
     });
 

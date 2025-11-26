@@ -4,7 +4,7 @@ import https from 'https';
 
 let credentials: { port: string; token: string; protocol: string } | null = null;
 
-export const connectToLCU = (): Promise<any> => {
+export const connectToLCU = (): Promise<{ port: string; token: string; protocol: string }> => {
     return new Promise((resolve, reject) => {
         // Use PowerShell to find the process, it's more reliable on modern Windows than wmic
         const command = `powershell -Command "Get-CimInstance Win32_Process -Filter \\"name = 'LeagueClientUx.exe'\\" | Select-Object -ExpandProperty CommandLine"`;
@@ -35,14 +35,24 @@ export const connectToLCU = (): Promise<any> => {
     });
 };
 
-export const exportRunePage = async (runePage: any): Promise<void> => {
+interface RunePage {
+    name: string;
+    id?: number;
+}
+
+interface LCURunePage {
+    name: string;
+    id: number;
+}
+
+export const exportRunePage = async (runePage: RunePage): Promise<void> => {
     if (!credentials) throw new Error('LCU not connected');
 
     // 1. Get current rune pages
-    const currentPages = await makeLCURequest('GET', '/lol-perks/v1/pages');
+    const currentPages = await makeLCURequest('GET', '/lol-perks/v1/pages') as LCURunePage[];
 
     // 2. Check if "Pyke Dominator" exists and delete it
-    const existingPage = currentPages.find((p: any) => p.name === runePage.name);
+    const existingPage = currentPages.find((p: LCURunePage) => p.name === runePage.name);
     if (existingPage) {
         await makeLCURequest('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
     }
@@ -53,7 +63,7 @@ export const exportRunePage = async (runePage: any): Promise<void> => {
 
 
 
-export const makeLCURequest = async (method: string, endpoint: string, body?: any) => {
+export const makeLCURequest = async (method: string, endpoint: string, body?: unknown) => {
     if (!credentials) {
         throw new Error('Not connected to LCU');
     }
@@ -88,10 +98,11 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: an
         }
         
         return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Only log non-404 errors
-        if (error.response?.status !== 404) {
-            console.error('LCU Request Error:', error.message);
+        const axiosError = error as { response?: { status?: number }; message?: string };
+        if (axiosError.response?.status !== 404) {
+            console.error('LCU Request Error:', axiosError.message || 'Unknown error');
         }
         throw error;
     }

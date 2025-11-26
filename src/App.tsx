@@ -36,7 +36,15 @@ const App: React.FC = () => {
       })
       .then(res => res.json())
       .then(data => {
-        const list: Champion[] = Object.values(data.data).map((c: any) => ({
+        interface ChampionData {
+            id: string;
+            key: string;
+            name: string;
+            tags: string[];
+        }
+        
+        const championsData = Object.values(data.data) as ChampionData[];
+        const list: Champion[] = championsData.map((c: ChampionData) => ({
           id: c.id,
           key: c.key,
           name: c.name,
@@ -81,7 +89,19 @@ const App: React.FC = () => {
         }
         
         if (res.success && res.data) {
-          const theirTeam = res.data.theirTeam;
+          interface TeamMember {
+              championId?: number;
+              assignedPosition?: string;
+              teamPosition?: string;
+              position?: string;
+          }
+          
+          interface LCUSession {
+              theirTeam?: TeamMember[];
+          }
+          
+          const sessionData = res.data as LCUSession;
+          const theirTeam = sessionData.theirTeam;
           if (Array.isArray(theirTeam)) {
             setSelections(prev => {
               const newSelections = { ...prev };
@@ -95,10 +115,11 @@ const App: React.FC = () => {
                 'BOTTOM': 'Bot',
                 'UTILITY': 'Support'
               };
-
-              theirTeam.forEach((member: any) => {
-                if (member.championId && member.championId !== 0) {
-                  const found = champions.find(c => c.key === member.championId.toString());
+              
+              theirTeam.forEach((member: TeamMember) => {
+                const championId = member.championId;
+                if (championId !== undefined && championId !== 0) {
+                  const found = champions.find(c => c.key === championId.toString());
                   if (found) {
                     // Use assignedPosition or teamPosition from LCU API
                     const lcuRole = member.assignedPosition || member.teamPosition || member.position;
@@ -204,7 +225,11 @@ const App: React.FC = () => {
       const currentPages = res.data;
 
       // 2. Check if "Pyke Dominator" exists and delete it
-      const existingPage = currentPages.find((p: any) => p.name === runes.name);
+      interface RunePage {
+          name: string;
+          id: number;
+      }
+      const existingPage = (currentPages as RunePage[]).find((p: RunePage) => p.name === runes.name);
       if (existingPage) {
         const deleteRes = await window.electronAPI.requestLCU('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
         if (!deleteRes.success) console.warn('Failed to delete existing page:', deleteRes.error);
@@ -241,8 +266,9 @@ const App: React.FC = () => {
       console.log('Rune page exported successfully:', createRes.data);
       setExportStatus('success');
       setTimeout(() => setExportStatus('idle'), 3000);
-    } catch (error: any) {
-      console.error('Export failed:', error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error('Export failed:', err.message || error);
       setExportStatus('error');
       setTimeout(() => setExportStatus('idle'), 3000);
     }

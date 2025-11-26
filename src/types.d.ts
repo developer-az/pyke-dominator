@@ -3,9 +3,9 @@ export { };
 declare global {
     interface Window {
         electronAPI?: {
-            connectLCU: () => Promise<{ success: boolean; credentials?: any; error?: string }>;
-            requestLCU: (method: string, endpoint: string, body?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
-            onUpdate: (callback: (value: any) => void) => void;
+            connectLCU: () => Promise<{ success: boolean; credentials?: { port: string; token: string; protocol: string }; error?: string }>;
+            requestLCU: (method: string, endpoint: string, body?: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+            onUpdate: (callback: (value: unknown) => void) => void;
             windowMinimize: () => Promise<void>;
             windowMaximize: () => Promise<void>;
             windowClose: () => Promise<void>;
