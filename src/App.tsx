@@ -239,7 +239,23 @@ const App: React.FC = () => {
         if (!deleteRes.success) console.warn('Failed to delete existing page:', deleteRes.error);
       }
 
-      // 3. Create new page - Only send fields that LCU API accepts
+      // 3. Export item set (appears in in-game shop)
+      if (build && window.electronAPI.exportItemSet) {
+        try {
+          await window.electronAPI.exportItemSet({
+            starter: build.starter,
+            core: build.core,
+            boots: build.boots,
+            situational: build.situational,
+            buildPath: build.buildPath
+          });
+        } catch (itemSetError) {
+          // Item set export is optional, don't fail the whole export if it fails
+          console.warn('Item set export failed (this is okay):', itemSetError);
+        }
+      }
+
+      // 4. Create new rune page - Only send fields that LCU API accepts
       // Ensure selectedPerkIds array has exactly 9 elements: 4 primary + 2 secondary + 3 stat shards
       const selectedPerkIds = [...runes.selectedPerkIds];
       if (selectedPerkIds.length !== 9) {

@@ -80,8 +80,13 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                     >
                         {exportStatus === 'success' ? '✓ Exported!' :
                             exportStatus === 'error' ? '✕ Failed' :
-                                '→ Export to Client'}
+                                '→ Export Build'}
                     </button>
+                )}
+                {canExport && (
+                    <p className="text-xs text-slate-500 mt-2">
+                        Exports runes and item set. Item set appears in-game shop.
+                    </p>
                 )}
             </div>
 

@@ -61,6 +61,111 @@ export const exportRunePage = async (runePage: RunePage): Promise<void> => {
     await makeLCURequest('POST', '/lol-perks/v1/pages', runePage);
 };
 
+interface ItemSet {
+    title: string;
+    associatedChampions: number[];
+    associatedMaps: number[];
+    blocks: Array<{
+        type: string;
+        items: Array<{
+            id: string;
+            count: number;
+        }>;
+    }>;
+}
+
+interface LCUItemSet {
+    id: number;
+    title: string;
+}
+
+// Export item set to League Client (appears in in-game shop)
+export const exportItemSet = async (build: { starter: Array<{ id: string }>; core: Array<{ id: string }>; boots: { id: string }; situational: Array<{ id: string }>; buildPath: Array<{ id: string }> }): Promise<void> => {
+    if (!credentials) throw new Error('LCU not connected');
+
+    try {
+        // Get current summoner ID (needed for item sets)
+        const currentSummoner = await makeLCURequest('GET', '/lol-summoner/v1/current-summoner') as { summonerId: number };
+        if (!currentSummoner || !currentSummoner.summonerId) {
+            throw new Error('Could not get summoner ID');
+        }
+
+        const summonerId = currentSummoner.summonerId;
+
+        // Get Pyke's champion ID (555)
+        const pykeChampionId = 555;
+
+        // Get existing item sets
+        const existingSets = await makeLCURequest('GET', `/lol-item-sets/v1/item-sets/${summonerId}`) as LCUItemSet[] | null;
+        
+        // Delete existing "Pyke Dominator" item set if it exists
+        if (existingSets && Array.isArray(existingSets)) {
+            const existingSet = existingSets.find((s: LCUItemSet) => s.title === 'Pyke Dominator');
+            if (existingSet) {
+                await makeLCURequest('DELETE', `/lol-item-sets/v1/item-sets/${summonerId}/${existingSet.id}`);
+            }
+        }
+
+        // Create item set blocks
+        const blocks: ItemSet['blocks'] = [];
+
+        // Starter items block
+        if (build.starter.length > 0) {
+            blocks.push({
+                type: 'Starting Items',
+                items: build.starter.map(item => ({ id: item.id, count: 1 }))
+            });
+        }
+
+        // Core items block
+        if (build.core.length > 0) {
+            blocks.push({
+                type: 'Core Items',
+                items: build.core.map(item => ({ id: item.id, count: 1 }))
+            });
+        }
+
+        // Boots block
+        if (build.boots) {
+            blocks.push({
+                type: 'Boots',
+                items: [{ id: build.boots.id, count: 1 }]
+            });
+        }
+
+        // Build path block (ordered purchase sequence)
+        if (build.buildPath.length > 0) {
+            blocks.push({
+                type: 'Build Path',
+                items: build.buildPath.map(item => ({ id: item.id, count: 1 }))
+            });
+        }
+
+        // Situational items block
+        if (build.situational.length > 0) {
+            blocks.push({
+                type: 'Situational',
+                items: build.situational.map(item => ({ id: item.id, count: 1 }))
+            });
+        }
+
+        // Create the item set
+        const itemSet: ItemSet = {
+            title: 'Pyke Dominator',
+            associatedChampions: [pykeChampionId],
+            associatedMaps: [11, 12], // Summoner's Rift (11 = Classic, 12 = ARAM - adjust as needed)
+            blocks: blocks
+        };
+
+        // Create the item set
+        await makeLCURequest('POST', `/lol-item-sets/v1/item-sets/${summonerId}`, itemSet);
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        console.error('Failed to export item set:', err.message || 'Unknown error');
+        throw error;
+    }
+};
+
 
 
 export const makeLCURequest = async (method: string, endpoint: string, body?: unknown) => {

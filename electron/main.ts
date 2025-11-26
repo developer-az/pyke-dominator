@@ -103,6 +103,19 @@ app.whenReady().then(() => {
         }
     });
 
+    // Export item set handler
+    ipcMain.handle('lcu-export-item-set', async (_event, build) => {
+        try {
+            const { exportItemSet } = await import('./lcu-connector');
+            await exportItemSet(build);
+            return { success: true };
+        } catch (error: unknown) {
+            const err = error as { message?: string };
+            console.error('Export Item Set Error:', err.message || 'Unknown error');
+            return { success: false, error: err.message || 'Unknown error' };
+        }
+    });
+
     // Window Controls
     ipcMain.handle('window-minimize', () => {
         if (win) win.minimize();
