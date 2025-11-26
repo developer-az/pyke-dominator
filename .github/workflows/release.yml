@@ -30,48 +30,30 @@ jobs:
         run: npm run electron:build
 
       - name: Build Electron App
-        run: npx electron-builder --publish never
+        run: npx electron-builder --publish never --win nsis
+
+      - name: List release files
+        run: |
+          echo "Release directory contents:"
+          ls -la release/ || dir release\
+          echo "Looking for .exe files:"
+          find release -name "*.exe" -type f || echo "No .exe files found"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
 
       - name: Publish Release
         uses: ncipollo/release-action@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          artifacts: "release/*.exe"
-          token: ${{ secrets.PAT }}
+          artifacts: "release/*.exe,release/*.exe.blockmap"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
 
-  deploy-web:
-    runs-on: ubuntu-latest
-    needs: release-electron
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Web
-        run: npm run build
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './dist'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
