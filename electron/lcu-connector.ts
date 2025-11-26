@@ -70,11 +70,29 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: an
                 'Content-Type': 'application/json'
             },
             data: body,
-            httpsAgent: new https.Agent({ rejectUnauthorized: false })
+            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+            validateStatus: (status) => {
+                // Don't throw on 404 - it's expected when not in champ select
+                return status < 500;
+            }
         });
+        
+        // Check if response is an error
+        if (response.status === 404) {
+            // 404 is expected when not in champ select, return null instead of throwing
+            return null;
+        }
+        
+        if (response.status >= 400) {
+            throw new Error(`LCU API returned status ${response.status}`);
+        }
+        
         return response.data;
     } catch (error: any) {
-        console.error('LCU Request Error:', error.message);
+        // Only log non-404 errors
+        if (error.response?.status !== 404) {
+            console.error('LCU Request Error:', error.message);
+        }
         throw error;
     }
 };

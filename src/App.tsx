@@ -69,23 +69,54 @@ const App: React.FC = () => {
       if (!window.electronAPI) return;
       try {
         const res = await window.electronAPI.requestLCU('GET', '/lol-champ-select/v1/session');
+        
+        // Handle 404 gracefully (not in champ select) or other errors
+        if (!res.success) {
+          // If it's a 404, that's expected when not in champ select - silently ignore
+          if (res.error && res.error.includes('404')) {
+            return; // Not in champ select, this is normal
+          }
+          // Other errors might be connection issues, but don't spam console
+          return;
+        }
+        
         if (res.success && res.data) {
           const theirTeam = res.data.theirTeam;
           if (Array.isArray(theirTeam)) {
             setSelections(prev => {
               const newSelections = { ...prev };
-              const roles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
               let hasUpdates = false;
 
-              theirTeam.forEach((member: any, index: number) => {
+              // Map LCU role names to our role names
+              const roleMap: { [key: string]: string } = {
+                'TOP': 'Top',
+                'JUNGLE': 'Jungle',
+                'MIDDLE': 'Mid',
+                'BOTTOM': 'Bot',
+                'UTILITY': 'Support'
+              };
+
+              theirTeam.forEach((member: any) => {
                 if (member.championId && member.championId !== 0) {
                   const found = champions.find(c => c.key === member.championId.toString());
                   if (found) {
-                    // Assign to role based on index (0-4)
-                    const role = roles[index];
-                    if (newSelections[role]?.id !== found.id) {
-                      newSelections[role] = found;
-                      hasUpdates = true;
+                    // Use assignedPosition or teamPosition from LCU API
+                    const lcuRole = member.assignedPosition || member.teamPosition || member.position;
+                    const role = lcuRole ? roleMap[lcuRole] || null : null;
+                    
+                    if (role) {
+                      if (newSelections[role]?.id !== found.id) {
+                        newSelections[role] = found;
+                        hasUpdates = true;
+                      }
+                    } else {
+                      // Fallback: try to infer role from champion tags if LCU doesn't provide it
+                      // This is less accurate but better than index-based assignment
+                      const inferredRole = inferRoleFromChampion(found, newSelections);
+                      if (inferredRole && newSelections[inferredRole]?.id !== found.id) {
+                        newSelections[inferredRole] = found;
+                        hasUpdates = true;
+                      }
                     }
                   }
                 }
@@ -96,7 +127,11 @@ const App: React.FC = () => {
           }
         }
       } catch (e) {
-        // Session likely not active, ignore
+        // Session likely not active or other expected errors, ignore silently
+        // Only log unexpected errors
+        if (e && typeof e === 'object' && 'message' in e && !e.message?.includes('404')) {
+          console.debug('LCU polling error:', e);
+        }
       }
     }, 1000);
 
@@ -111,13 +146,44 @@ const App: React.FC = () => {
       const currentBuild = calculateBuild(enemies);
       setBuild(currentBuild);
       setRunes(calculateRunes(enemies, currentBuild));
-      setAnalysis(analyzeMatchup(enemies));
+      setAnalysis(analyzeMatchup(enemies, currentBuild));
     } else {
       setBuild(null);
       setRunes(null);
       setAnalysis(null);
     }
   }, [selections]);
+
+  // Helper function to infer role from champion tags when LCU doesn't provide role
+  const inferRoleFromChampion = (champion: Champion, currentSelections: { [key: string]: Champion | null }): string | null => {
+    // Check if role is already taken
+    const isRoleTaken = (role: string) => currentSelections[role] !== null;
+    
+    // Marksman = Bot
+    if (champion.tags.includes('Marksman') && !isRoleTaken('Bot')) {
+      return 'Bot';
+    }
+    // Support tag = Support
+    if (champion.tags.includes('Support') && !isRoleTaken('Support')) {
+      return 'Support';
+    }
+    // Tank/Fighter often = Top
+    if ((champion.tags.includes('Tank') || champion.tags.includes('Fighter')) && !isRoleTaken('Top')) {
+      return 'Top';
+    }
+    // Assassin/Mage often = Mid
+    if ((champion.tags.includes('Assassin') || champion.tags.includes('Mage')) && !isRoleTaken('Mid')) {
+      return 'Mid';
+    }
+    
+    // Fill remaining slots
+    const roles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
+    for (const role of roles) {
+      if (!isRoleTaken(role)) return role;
+    }
+    
+    return null;
+  };
 
   const handleSelectionChange = (role: string, champion: Champion | null) => {
     setSelections(prev => ({ ...prev, [role]: champion }));
@@ -137,16 +203,42 @@ const App: React.FC = () => {
       // 2. Check if "Pyke Dominator" exists and delete it
       const existingPage = currentPages.find((p: any) => p.name === runes.name);
       if (existingPage) {
-        await window.electronAPI.requestLCU('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
+        const deleteRes = await window.electronAPI.requestLCU('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
+        if (!deleteRes.success) console.warn('Failed to delete existing page:', deleteRes.error);
       }
 
-      // 3. Create new page
-      const createRes = await window.electronAPI.requestLCU('POST', '/lol-perks/v1/pages', runes);
-      if (!createRes.success) throw new Error(createRes.error);
+      // 3. Create new page - Only send fields that LCU API accepts
+      // Ensure selectedPerkIds array has exactly 9 elements: 4 primary + 2 secondary + 3 stat shards
+      const selectedPerkIds = [...runes.selectedPerkIds];
+      if (selectedPerkIds.length !== 9) {
+        console.error('Invalid rune page: selectedPerkIds must have 9 elements, got', selectedPerkIds.length);
+        throw new Error(`Invalid rune configuration: Expected 9 runes, got ${selectedPerkIds.length}`);
+      }
 
+      const runePagePayload = {
+        name: runes.name,
+        primaryStyleId: runes.primaryStyleId,
+        subStyleId: runes.subStyleId,
+        selectedPerkIds: selectedPerkIds,
+        // LCU API requires current: true to make it the active page
+        current: true
+      };
+      
+      console.log('Exporting rune page:', JSON.stringify(runePagePayload, null, 2));
+      console.log('Primary Style:', runePagePayload.primaryStyleId, 'Secondary Style:', runePagePayload.subStyleId);
+      console.log('Rune IDs:', selectedPerkIds);
+      console.log('Secondary runes (indices 4-5):', selectedPerkIds[4], selectedPerkIds[5]);
+      
+      const createRes = await window.electronAPI.requestLCU('POST', '/lol-perks/v1/pages', runePagePayload);
+      if (!createRes.success) {
+        console.error('LCU API Error:', createRes.error);
+        throw new Error(createRes.error || 'Failed to create rune page');
+      }
+
+      console.log('Rune page exported successfully:', createRes.data);
       setExportStatus('success');
       setTimeout(() => setExportStatus('idle'), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Export failed:', error);
       setExportStatus('error');
       setTimeout(() => setExportStatus('idle'), 3000);
@@ -204,7 +296,7 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={handleClose}
-              className="w-10 h-10 flex items-center justify-center hover:bg-red-500/20 rounded transition-all duration-150 text-slate-400 hover:text-red-400 hover:bg-red-500/30 active:bg-red-500/40"
+              className="w-10 h-10 flex items-center justify-center hover:bg-red-500/30 rounded transition-all duration-150 text-slate-400 hover:text-red-400 active:bg-red-500/40"
               title="Close"
             >
               <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

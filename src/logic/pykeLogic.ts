@@ -130,20 +130,41 @@ export const calculateBuild = (enemyTeam: Champion[]): Build => {
     // Initialize situational items array here, as core logic might add to it.
     const situational: Item[] = [];
 
+    // Pro play logic: Analyze bot lane matchup for item priority
+    const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman'));
+    const enemySupport = enemyTeam.find(c => c.tags.includes('Support'));
+    const isEnchanterSupport = enemySupport && ['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka', 'Yuumi'].includes(enemySupport.id);
+    const isTankSupport = enemySupport && enemySupport.tags.includes('Tank');
+    const isMobileADC = enemyADC && ['Ezreal', 'Lucian', 'Caitlyn', 'Vayne', 'Tristana'].includes(enemyADC.id);
+    
     if (squishyThreats >= 3) {
-        // SNOWBALL MODE
+        // SNOWBALL MODE - Pro play: Voltaic Cyclosword is often first item for burst
         build.core = [
-            { ...ITEMS.HUBRIS, reason: 'Snowball Mode: Enemy team is squishy. Stack AD and take over the game.' },
-            { ...ITEMS.AXIOM_ARC, reason: 'PLAYABILITY: Rushing Axiom Arc 2nd ensures your Ultimate is ALWAYS up for resets, maximizing early snowball.' }
+            { ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'PRO PLAY: Voltaic Cyclosword first for maximum burst. Energized slow sets up guaranteed Q hits.' },
+            { ...ITEMS.AXIOM_ARC, reason: 'PRO PLAY: Axiom Arc 2nd ensures Ultimate resets. Critical for snowballing teamfights.' }
         ];
-        // Add Voltaic as a strong situational follow-up
-        situational.push({ ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'Burst damage to one-shot the squishy targets.' });
+        // Hubris is situational in pro play - only if you're confident you can stack it
+        situational.push({ ...ITEMS.HUBRIS, reason: 'Snowball item: Gain massive AD from takedowns. Only if you can reliably get kills.' });
+        situational.push({ ...ITEMS.OPPORTUNITY, reason: 'Movement speed and lethality after kills. Great for cleanup and resets.' });
     } else {
         // CONTROL MODE (Vs Tanks or Harder Comps)
-        build.core = [
-            { ...ITEMS.UMBRAL_GLAIVE, reason: 'Control Mode: Enemy team is tanky/safe. Focus on vision control and map pressure.' },
-            { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'Mobility to roam and impact other lanes since you cannot one-shot tanks.' }
-        ];
+        // Pro play: Umbral Glaive is almost always first item for vision control
+        const shouldRushUmbral = isTankSupport || isEnchanterSupport || tankThreats >= 2;
+        
+        if (shouldRushUmbral) {
+            build.core = [
+                { ...ITEMS.UMBRAL_GLAIVE, reason: 'PRO PLAY: Umbral Glaive first for vision control. Essential against tank/enchanter supports.' },
+                { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'PRO PLAY: Youmuu\'s 2nd for roaming potential. Mobility to impact other lanes.' }
+            ];
+        } else {
+            // Standard control build
+            build.core = [
+                { ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'Control Mode: Burst damage for picks. Slows help secure kills.' },
+                { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'Mobility to roam and impact other lanes since you cannot one-shot tanks.' }
+            ];
+            // Add Umbral as situational for vision control
+            situational.push({ ...ITEMS.UMBRAL_GLAIVE, reason: 'Vision control dominance. Consider if enemy has good vision setup.' });
+        }
     }
 
     // 3. Situational / Counter Items
@@ -180,14 +201,23 @@ export const calculateBuild = (enemyTeam: Champion[]): Build => {
     build.situational = situational.slice(0, 3);
 
     // Construct Full Build Path (Pacing Engine)
-    // Logic: Starter -> Rush Core 1 -> Boots -> Core 2 -> Situational
-    build.buildPath = [
+    // Pro play pacing: Usually complete first item before boots, or get tier 1 boots early
+    // Logic: Starter -> Core 1 -> Boots -> Core 2 -> Situational
+    const buildPathItems: Item[] = [
         ITEMS.WORLD_ATLAS,
-        { ...build.core[0], reason: 'RUSH ITEM: ' + (build.core[0].reason || 'Core power spike.') },
-        { ...build.boots, reason: 'TIER 2 BOOTS: ' + (build.boots.reason || 'Mobility.') },
-        { ...build.core[1], reason: 'SECOND CORE: ' + (build.core[1].reason || 'Follow up damage.') },
-        ...build.situational
+        { ...build.core[0], reason: 'RUSH ITEM: ' + (build.core[0].reason || 'Core power spike.') }
     ];
+    
+    // Boots timing: Usually after first item, but can be earlier if needed
+    buildPathItems.push({ ...build.boots, reason: 'TIER 2 BOOTS: ' + (build.boots.reason || 'Mobility.') });
+    
+    // Second core item
+    buildPathItems.push({ ...build.core[1], reason: 'SECOND CORE: ' + (build.core[1].reason || 'Follow up damage.') });
+    
+    // Situational items
+    buildPathItems.push(...build.situational);
+    
+    build.buildPath = buildPathItems;
 
     return build;
 };
@@ -200,57 +230,68 @@ export const calculateRunes = (enemyTeam: Champion[], build?: Build): RunePage =
     reasons[8143] = "Sudden Impact: Grants lethality after using E (dash) or W (stealth).";
     reasons[8106] = "Ultimate Hunter: Reduces R cooldown. More R's = More Gold.";
 
-    // Vision Rune Logic (Synergy with Build)
-    let visionRuneId = 8120; // Default to Ghost Poro (Safe)
-    let visionRuneReason = "Ghost Poro: Provides extra vision duration. Good since we don't have Umbral Glaive to clear wards aggressively.";
+    // Vision Rune Logic (Synergy with Build) - Slot 3 runes
+    // Updated for Season 15: Zombie Ward (8136) and Ghost Poro (8120) removed
+    // New options: Sixth Sense (8137), Grisly Mementos (8140), Deep Ward (8141)
+    // Sixth Sense is the direct replacement for Zombie Ward
+    let visionRuneId = 8137; // Sixth Sense (replaces Zombie Ward)
+    let visionRuneReason = "Sixth Sense: Automatically senses nearby untracked and unseen wards, tracking them for your team. At level 11, reveals wards for 10 seconds. Perfect synergy with vision control.";
 
     const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) || build?.situational.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
 
     if (hasUmbral) {
-        visionRuneId = 8136; // Zombie Ward
-        visionRuneReason = "Zombie Ward: SYNERGY! You have Umbral Glaive, so you will clear many wards. This turns them into vision for your team.";
+        visionRuneId = 8137; // Sixth Sense - best synergy with Umbral Glaive (same as default)
+        visionRuneReason = "Sixth Sense: SYNERGY! With Umbral Glaive, you'll clear many wards. Sixth Sense tracks and reveals them for your team, maximizing vision control.";
     }
 
     reasons[visionRuneId] = visionRuneReason;
 
-    const page: RunePage = {
-        name: "Pyke Dominator",
-        primaryStyleId: 8100,
-        subStyleId: 8400,
-        selectedPerkIds: [
-            9923, // Hail of Blades
-            8143, // Sudden Impact
-            visionRuneId, // Dynamic Vision Rune
-            8106, // Ultimate Hunter
-            8444, // Second Wind
-            8424, // Unflinching
-            5008, // Offense: Adaptive Force
-            5008, // Flex: Adaptive Force
-            5001  // Defense: Health Scaling
-        ],
-        reasons: reasons
-    };
-
+    // Determine secondary tree based on enemy composition
     let pokeThreats = 0;
     enemyTeam.forEach(c => {
         if (c.tags.includes('Mage') || c.tags.includes('Marksman')) pokeThreats++;
     });
 
+    // Initialize secondary tree runes based on composition
+    let secondaryStyleId: number;
+    let secondaryRune1: number;
+    let secondaryRune2: number;
+
     if (pokeThreats >= 3) {
-        page.subStyleId = 8400; // Resolve
-        page.selectedPerkIds[4] = 8444; // Second Wind
-        page.selectedPerkIds[5] = 8424; // Unflinching
-
-        page.reasons[8444] = `Second Wind: Chosen because enemy has ${pokeThreats} poke threats. Regenerates health after taking damage.`;
-        page.reasons[8424] = "Unflinching: Grants tenacity when your summoner spells are down.";
+        // Resolve tree for poke-heavy teams
+        secondaryStyleId = 8400; // Resolve
+        secondaryRune1 = 8444; // Second Wind
+        secondaryRune2 = 8242; // Unflinching (ID updated for Season 15)
+        
+        reasons[8444] = `Second Wind: Chosen because enemy has ${pokeThreats} poke threats. Regenerates health after taking damage.`;
+        reasons[8242] = "Unflinching: Grants tenacity when your summoner spells are down.";
     } else {
-        page.subStyleId = 8000; // Precision
-        page.selectedPerkIds[4] = 8009; // Presence of Mind (Replaces Triumph)
-        page.selectedPerkIds[5] = 8014; // Coup de Grace
-
-        page.reasons[8009] = "Presence of Mind: MANA SUSTAIN. Restores mana on takedowns, ensuring you never run dry during reset chains.";
-        page.reasons[8014] = "Coup de Grace: Deal more damage to low health enemies. Synergizes with Pyke's R execute threshold.";
+        // Precision tree for standard builds
+        secondaryStyleId = 8000; // Precision
+        secondaryRune1 = 8009; // Presence of Mind
+        secondaryRune2 = 8014; // Coup de Grace
+        
+        reasons[8009] = "Presence of Mind: MANA SUSTAIN. Restores mana on takedowns, ensuring you never run dry during reset chains.";
+        reasons[8014] = "Coup de Grace: Deal more damage to low health enemies. Synergizes with Pyke's R execute threshold.";
     }
+
+    const page: RunePage = {
+        name: "Pyke Dominator",
+        primaryStyleId: 8100, // Domination
+        subStyleId: secondaryStyleId,
+        selectedPerkIds: [
+            9923, // Hail of Blades (Keystone)
+            8143, // Sudden Impact (Primary)
+            visionRuneId, // Dynamic Vision Rune (Primary)
+            8106, // Ultimate Hunter (Primary)
+            secondaryRune1, // Secondary Rune 1
+            secondaryRune2, // Secondary Rune 2
+            5008, // Offense: Adaptive Force (Stat Shard)
+            5008, // Flex: Adaptive Force (Stat Shard)
+            5001  // Defense: Health Scaling (Stat Shard)
+        ],
+        reasons: reasons
+    };
 
     return page;
 };
@@ -265,9 +306,170 @@ export interface MatchupAnalysis {
     primaryTargets: string[];
     majorThreats: string[];
     tips: string[];
+    botLaneMatchup?: BotLaneMatchup;
+    damageAnalysis?: DamageAnalysis;
 }
 
-export const analyzeMatchup = (enemyTeam: Champion[]): MatchupAnalysis => {
+export interface BotLaneMatchup {
+    enemyADC: Champion | null;
+    enemySupport: Champion | null;
+    matchupDifficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'VERY_HARD';
+    lanePhase: string;
+    allInPotential: string;
+    keyCooldowns: string[];
+}
+
+export interface DamageAnalysis {
+    level3Combo: number;
+    level6Combo: number;
+    level6WithUlt: number;
+    killThreshold: string;
+    notes: string[];
+}
+
+// Pyke ability damage data (base + scaling per level)
+const PYKE_ABILITIES = {
+    Q: {
+        base: [85, 135, 185, 235, 285],
+        scaling: 0.6, // 60% bonus AD
+        executeThreshold: [0.15, 0.175, 0.2, 0.225, 0.25] // % max HP execute
+    },
+    E: {
+        base: [95, 125, 155, 185, 215],
+        scaling: 1.0 // 100% bonus AD
+    },
+    R: {
+        base: [250, 290, 330],
+        scaling: 0.8, // 80% bonus AD
+        executeThreshold: [0.25, 0.275, 0.3] // % missing HP execute
+    },
+    Passive: {
+        greyHealth: 0.3, // 30% of damage taken becomes grey health
+        regen: [25, 30, 35, 40, 45] // per level
+    }
+};
+
+// Base stats at different levels
+const PYKE_STATS = {
+    level3: { ad: 62, bonusAd: 0 },
+    level6: { ad: 75, bonusAd: 0 },
+    level6WithItems: { ad: 75, bonusAd: 25 } // Assuming first item component
+};
+
+// Calculate damage for Pyke combo
+const calculatePykeDamage = (level: number, hasUlt: boolean, bonusAd: number = 0): DamageAnalysis => {
+    const level3Combo = 
+        PYKE_ABILITIES.Q.base[0] + (PYKE_ABILITIES.Q.scaling * bonusAd) + // Q damage
+        PYKE_ABILITIES.E.base[0] + (PYKE_ABILITIES.E.scaling * bonusAd) + // E damage
+        50; // Auto attack estimate
+    
+    const level6Combo = 
+        PYKE_ABILITIES.Q.base[1] + (PYKE_ABILITIES.Q.scaling * bonusAd) + // Q level 2
+        PYKE_ABILITIES.E.base[2] + (PYKE_ABILITIES.E.scaling * bonusAd) + // E level 3
+        75; // Auto attacks
+    
+    const level6WithUlt = level6Combo + 
+        PYKE_ABILITIES.R.base[0] + (PYKE_ABILITIES.R.scaling * bonusAd); // R level 1
+    
+    // Execute thresholds
+    let killThreshold = '';
+    if (hasUlt) {
+        killThreshold = `R execute threshold: ~${Math.round(level6WithUlt * 0.25)} HP (25% missing HP)`;
+    } else {
+        killThreshold = `Q execute threshold: ~${Math.round(level6Combo * 0.175)} HP (17.5% max HP)`;
+    }
+    
+    return {
+        level3Combo: Math.round(level3Combo),
+        level6Combo: Math.round(level6Combo),
+        level6WithUlt: Math.round(level6WithUlt),
+        killThreshold,
+        notes: [
+            `Level 3 all-in: ~${Math.round(level3Combo)} damage (Q + E + autos)`,
+            `Level 6 all-in: ~${Math.round(level6Combo)} damage without ult`,
+            `Level 6 with R: ~${Math.round(level6WithUlt)} damage + execute`,
+            'Damage assumes Q is fully charged and E hits both targets',
+            'Hail of Blades adds ~150-200 extra damage from 3 quick autos'
+        ]
+    };
+};
+
+// Analyze bot lane matchup specifically
+const analyzeBotLaneMatchup = (enemyTeam: Champion[]): BotLaneMatchup | null => {
+    const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman')) || null;
+    const enemySupport = enemyTeam.find(c => c.tags.includes('Support')) || null;
+    
+    if (!enemyADC && !enemySupport) return null;
+    
+    let difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'VERY_HARD' = 'MEDIUM';
+    let lanePhase = '';
+    let allInPotential = '';
+    const keyCooldowns: string[] = [];
+    
+    // Analyze ADC matchup
+    if (enemyADC) {
+        const adcName = enemyADC.id;
+        
+        // Easy matchups (immobile ADCs)
+        if (['Ashe', 'Jinx', 'Varus', 'KogMaw', 'Twitch'].includes(adcName)) {
+            difficulty = 'EASY';
+            lanePhase = 'Favorable: These ADCs lack mobility. Look for Q hooks from bushes and Flash-E engages.';
+            allInPotential = 'HIGH: Can easily all-in at level 2-3. Their immobility makes them easy targets.';
+        }
+        // Hard matchups (mobile/self-peel ADCs)
+        else if (['Ezreal', 'Lucian', 'Caitlyn', 'Vayne', 'Tristana'].includes(adcName)) {
+            difficulty = 'HARD';
+            lanePhase = 'Difficult: High mobility makes hooks harder to land. Wait for them to use dashes.';
+            allInPotential = 'MODERATE: Only engage when their escape abilities are on cooldown.';
+            keyCooldowns.push(`${enemyADC.name} dash/escape: 15-20s`);
+        }
+        // Very hard (strong self-peel)
+        else if (['Xayah', 'Sivir', 'Samira'].includes(adcName)) {
+            difficulty = 'VERY_HARD';
+            lanePhase = 'Extremely Difficult: Spell shields and windwalls counter your Q. Bait their abilities first.';
+            allInPotential = 'LOW: Must bait their defensive abilities before engaging.';
+            keyCooldowns.push(`${enemyADC.name} spell shield: 20-24s`);
+        }
+    }
+    
+    // Analyze Support matchup
+    if (enemySupport) {
+        const suppName = enemySupport.id;
+        
+        // Tank supports
+        if (enemySupport.tags.includes('Tank')) {
+            difficulty = difficulty === 'EASY' ? 'MEDIUM' : difficulty === 'MEDIUM' ? 'HARD' : difficulty;
+            lanePhase += ' Enemy support is tanky - avoid extended trades.';
+            allInPotential = 'Focus ADC, ignore tank support in all-ins.';
+            keyCooldowns.push(`${enemySupport.name} engage tool: 12-18s`);
+        }
+        // Enchanter supports
+        else if (['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka'].includes(suppName)) {
+            difficulty = difficulty === 'VERY_HARD' ? 'VERY_HARD' : 'MEDIUM';
+            lanePhase += ' Enchanter support - they will shield/heal. Burst is key.';
+            allInPotential = 'MODERATE: Need to burst through shields. Consider Serpent\'s Fang.';
+            keyCooldowns.push(`${enemySupport.name} shield/heal: 8-12s`);
+        }
+        // Hook supports (skill matchup)
+        else if (['Thresh', 'Blitzcrank', 'Nautilus', 'Pyke'].includes(suppName)) {
+            difficulty = 'HARD';
+            lanePhase += ' Hook vs Hook matchup - whoever lands hook first wins.';
+            allInPotential = 'HIGH: Skill matchup. Bait their hook, then engage.';
+            keyCooldowns.push(`${enemySupport.name} hook: 12-16s`);
+        }
+    }
+    
+    return {
+        enemyADC,
+        enemySupport,
+        matchupDifficulty: difficulty,
+        lanePhase: lanePhase || 'Standard lane phase. Look for opportunities.',
+        allInPotential: allInPotential || 'MODERATE: Standard all-in potential.',
+        keyCooldowns
+    };
+};
+
+export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAnalysis => {
     let squishies: string[] = [];
     let tanks: string[] = [];
     let ccHeavy: string[] = [];
@@ -311,11 +513,23 @@ export const analyzeMatchup = (enemyTeam: Champion[]): MatchupAnalysis => {
         analysis.description = "You cannot kill their frontline. Do NOT force fights 2v2 bot lane against tanks.";
         analysis.winCondition = "Abandon lane (roam) to get your Mid/Jungle ahead. Peel for your Carry in fights.";
         analysis.aggressionLevel = "LOW";
-        analysis.tips = [
-            "Rush Umbral Glaive to deny vision.",
-            "Use Q to peel divers off your ADC, not just to engage.",
-            "Your R is for executing low targets, not starting fights."
-        ];
+        
+        // Only suggest Umbral Glaive if it's actually in the build
+        const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) || 
+                         build?.situational.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) ||
+                         build?.buildPath.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
+        
+        const tips = [];
+        if (hasUmbral) {
+            tips.push("Rush Umbral Glaive to deny vision and control the map.");
+        } else {
+            tips.push("Focus on roaming and vision control with your support item.");
+        }
+        tips.push("Use Q to peel divers off your ADC, not just to engage.");
+        tips.push("Your R is for executing low targets, not starting fights.");
+        tips.push("Look for roams mid when bot lane is pushed in.");
+        
+        analysis.tips = tips;
     }
     // Scenario 3: Poke Lane (Sustain)
     else if (pokeHeavy.length >= 1) {
@@ -330,5 +544,16 @@ export const analyzeMatchup = (enemyTeam: Champion[]): MatchupAnalysis => {
         ];
     }
 
+    // Add bot lane specific analysis
+    const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam);
+    if (botLaneMatchup) {
+        analysis.botLaneMatchup = botLaneMatchup;
+    }
+    
+    // Add damage analysis
+    const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
+    const bonusAd = hasUmbral ? 0 : 0; // No items at level 6 typically
+    analysis.damageAnalysis = calculatePykeDamage(6, true, bonusAd);
+    
     return analysis;
 };

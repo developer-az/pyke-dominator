@@ -84,9 +84,20 @@ app.whenReady().then(() => {
     ipcMain.handle('lcu-request', async (_event, method, endpoint, body) => {
         try {
             const response = await makeLCURequest(method, endpoint, body);
+            
+            // Handle 404 responses gracefully (expected when not in champ select)
+            if (response === null) {
+                return { success: false, error: '404 - Not found (expected when not in champ select)' };
+            }
+            
             return { success: true, data: response };
         } catch (error: any) {
-            return { success: false, error: error.message };
+            // Don't log 404 errors as they're expected
+            const is404 = error.response?.status === 404 || error.message?.includes('404');
+            if (!is404) {
+                console.error('LCU Request Error:', error.message);
+            }
+            return { success: false, error: error.message || 'Unknown error' };
         }
     });
 

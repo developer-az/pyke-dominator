@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Build, RunePage, Item, MatchupAnalysis } from '../logic/pykeLogic';
+import type { Build, RunePage, Item, MatchupAnalysis, BotLaneMatchup, DamageAnalysis } from '../logic/pykeLogic';
 
 interface Props {
     build: Build;
@@ -123,6 +123,71 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                             ))}
                         </ul>
                     </div>
+
+                    {/* Bot Lane Matchup Analysis */}
+                    {analysis.botLaneMatchup && (
+                        <div className="mt-6 pt-4 border-t border-slate-800">
+                            <h4 className="text-xs font-bold text-pyke-green uppercase tracking-wider mb-3">Bot Lane Matchup</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-slate-400 text-sm">Difficulty:</span>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                            analysis.botLaneMatchup.matchupDifficulty === 'EASY' ? 'bg-green-500/20 text-green-400 border border-green-500/50' :
+                                            analysis.botLaneMatchup.matchupDifficulty === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
+                                            analysis.botLaneMatchup.matchupDifficulty === 'HARD' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50' :
+                                            'bg-red-500/20 text-red-400 border border-red-500/50'
+                                        }`}>
+                                            {analysis.botLaneMatchup.matchupDifficulty}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mb-2">{analysis.botLaneMatchup.lanePhase}</p>
+                                    <p className="text-sm text-slate-400"><strong className="text-slate-300">All-in Potential:</strong> {analysis.botLaneMatchup.allInPotential}</p>
+                                </div>
+                                <div>
+                                    {analysis.botLaneMatchup.keyCooldowns.length > 0 && (
+                                        <>
+                                            <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Key Cooldowns</h5>
+                                            <ul className="space-y-1">
+                                                {analysis.botLaneMatchup.keyCooldowns.map((cd, i) => (
+                                                    <li key={i} className="text-xs text-slate-400">• {cd}</li>
+                                                ))}
+                                            </ul>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Damage Analysis */}
+                    {analysis.damageAnalysis && (
+                        <div className="mt-6 pt-4 border-t border-slate-800">
+                            <h4 className="text-xs font-bold text-pyke-green uppercase tracking-wider mb-3">Damage Analysis</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                <div className="bg-slate-800/50 p-3 rounded border border-slate-700/50">
+                                    <div className="text-xs text-slate-500 mb-1">Level 3 Combo</div>
+                                    <div className="text-lg font-bold text-red-400">{analysis.damageAnalysis.level3Combo} damage</div>
+                                </div>
+                                <div className="bg-slate-800/50 p-3 rounded border border-slate-700/50">
+                                    <div className="text-xs text-slate-500 mb-1">Level 6 Combo</div>
+                                    <div className="text-lg font-bold text-orange-400">{analysis.damageAnalysis.level6Combo} damage</div>
+                                </div>
+                                <div className="bg-slate-800/50 p-3 rounded border border-slate-700/50">
+                                    <div className="text-xs text-slate-500 mb-1">Level 6 + Ult</div>
+                                    <div className="text-lg font-bold text-pyke-green">{analysis.damageAnalysis.level6WithUlt} damage</div>
+                                </div>
+                            </div>
+                            <div className="text-sm text-slate-400 mb-2">
+                                <strong className="text-slate-300">Execute Threshold:</strong> {analysis.damageAnalysis.killThreshold}
+                            </div>
+                            <ul className="space-y-1">
+                                {analysis.damageAnalysis.notes.map((note, i) => (
+                                    <li key={i} className="text-xs text-slate-500">• {note}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -207,11 +272,15 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                             <div className="flex gap-4 pl-2">
                                 <RuneIcon id={8143} name="Sudden Impact" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SuddenImpact/SuddenImpact.png" reason={runes.reasons[8143]} />
 
-                                {/* Dynamic Vision Rune (Slot 2) */}
-                                {runes.selectedPerkIds.includes(8136) ? (
-                                    <RuneIcon id={8136} name="Zombie Ward" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/ZombieWard/ZombieWard.png" reason={runes.reasons[8136]} />
+                                {/* Dynamic Vision Rune (Slot 3) - Updated for Season 15 */}
+                                {runes.selectedPerkIds.includes(8137) ? (
+                                    <RuneIcon id={8137} name="Sixth Sense" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SixthSense/SixthSense.png" reason={runes.reasons[8137]} />
+                                ) : runes.selectedPerkIds.includes(8141) ? (
+                                    <RuneIcon id={8141} name="Deep Ward" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/DeepWard/DeepWard.png" reason={runes.reasons[8141]} />
+                                ) : runes.selectedPerkIds.includes(8140) ? (
+                                    <RuneIcon id={8140} name="Grisly Mementos" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/GrislyMementos/GrislyMementos.png" reason={runes.reasons[8140]} />
                                 ) : (
-                                    <RuneIcon id={8120} name="Ghost Poro" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/GhostPoro/GhostPoro.png" reason={runes.reasons[8120]} />
+                                    <RuneIcon id={8137} name="Sixth Sense" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SixthSense/SixthSense.png" reason={runes.reasons[8137]} />
                                 )}
 
                                 <RuneIcon id={8106} name="Ultimate Hunter" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/UltimateHunter/UltimateHunter.png" reason={runes.reasons[8106]} />
@@ -232,7 +301,7 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                                 {runes.subStyleId === 8400 ? (
                                     <>
                                         <RuneIcon id={8444} name="Second Wind" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/SecondWind/SecondWind.png" reason={runes.reasons[8444]} />
-                                        <RuneIcon id={8424} name="Unflinching" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Unflinching/Unflinching.png" reason={runes.reasons[8424]} />
+                                        <RuneIcon id={8242} name="Unflinching" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Unflinching/Unflinching.png" reason={runes.reasons[8242]} />
                                     </>
                                 ) : (
                                     <>
