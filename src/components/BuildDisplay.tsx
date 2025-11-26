@@ -46,7 +46,7 @@ const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: 
 
 export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport, canExport, exportStatus }) => {
     return (
-        <div className="space-y-8 animate-fade-in relative" style={{ zIndex: 1 }}>
+        <div className="space-y-8 animate-fade-in relative" style={{ zIndex: 1, position: 'relative' }}>
             {/* Header */}
             <div className="flex justify-between items-center border-b border-slate-700/50 pb-4">
                 <h2 className="text-2xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_8px_rgba(0,255,157,0.3)]">Dominator Loadout</h2>

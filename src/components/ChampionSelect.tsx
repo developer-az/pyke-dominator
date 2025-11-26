@@ -56,7 +56,7 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
     }, []);
 
     return (
-        <div className={`grid grid-cols-1 ${displayRoles.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-5'} gap-4`} style={{ overflow: 'visible' }}>
+        <div className={`grid grid-cols-1 ${displayRoles.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-5'} gap-4`} style={{ overflow: 'visible', position: 'relative', zIndex: 200 }}>
             {displayRoles.map((role) => {
                 const isOpen = openDropdowns[role] || false;
                 const searchTerm = searchTerms[role] || '';
@@ -64,7 +64,7 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                 const filteredChampions = getFilteredChampions(role);
 
                 return (
-                    <div key={role} className="flex flex-col gap-2">
+                    <div key={role} className="flex flex-col gap-2 relative" style={{ zIndex: 200 }}>
                         <label className={`font-bold uppercase tracking-wider text-sm mb-1 ${
                             role === 'YourADC' ? 'text-blue-400' : 'text-pyke-green'
                         }`}>
@@ -73,6 +73,7 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                         <div 
                             className="relative" 
                             ref={(el) => { dropdownRefs.current[role] = el; }}
+                            style={{ zIndex: 200 }}
                         >
                             {/* Input Field */}
                             <div className="relative">
@@ -107,11 +108,14 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                             {/* Dropdown List */}
                             {isOpen && (
                                 <div 
-                                    className="absolute z-[9999] w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto"
+                                    className="absolute w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto"
                                     style={{ 
                                         position: 'absolute',
-                                        zIndex: 9999,
-                                        isolation: 'isolate'
+                                        zIndex: 10000,
+                                        isolation: 'isolate',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0
                                     }}
                                 >
                                     {filteredChampions.length === 0 ? (

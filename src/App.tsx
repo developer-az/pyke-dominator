@@ -380,10 +380,10 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 relative">
           {/* Left Panel: Enemy Selection */}
-          <div className="xl:col-span-3 space-y-6 animate-slide-in relative" style={{ zIndex: 10 }}>
-            <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800/80 backdrop-blur-md shadow-xl hover:border-slate-700/80 transition-all duration-300 relative" style={{ zIndex: 10, overflow: 'visible' }}>
+          <div className="xl:col-span-3 space-y-6 animate-slide-in relative" style={{ zIndex: 100 }}>
+            <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800/80 backdrop-blur-md shadow-xl hover:border-slate-700/80 transition-all duration-300 relative" style={{ zIndex: 100, overflow: 'visible' }}>
               <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
                 <span className="text-pyke-green text-2xl">///</span> Enemy Composition
               </h2>
@@ -396,7 +396,7 @@ const App: React.FC = () => {
             </div>
             
             {/* Your ADC Selection */}
-            <div className="bg-slate-900/60 p-6 rounded-xl border border-blue-500/30 backdrop-blur-md shadow-xl hover:border-blue-500/50 transition-all duration-300 relative" style={{ zIndex: 10, overflow: 'visible' }}>
+            <div className="bg-slate-900/60 p-6 rounded-xl border border-blue-500/30 backdrop-blur-md shadow-xl hover:border-blue-500/50 transition-all duration-300 relative" style={{ zIndex: 100, overflow: 'visible' }}>
               <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
                 <span className="text-blue-400 text-2xl">⚔</span> Your Team
               </h2>
@@ -410,7 +410,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Right Panel: Build & Analysis */}
-          <div className="xl:col-span-9 space-y-6">
+          <div className="xl:col-span-9 space-y-6 relative" style={{ zIndex: 1 }}>
             {build && runes && analysis ? (
               <BuildDisplay
                 build={build}
