@@ -129,8 +129,11 @@ const App: React.FC = () => {
       } catch (e) {
         // Session likely not active or other expected errors, ignore silently
         // Only log unexpected errors
-        if (e && typeof e === 'object' && 'message' in e && !e.message?.includes('404')) {
-          console.debug('LCU polling error:', e);
+        if (e && typeof e === 'object' && 'message' in e) {
+          const errorMessage = String((e as { message?: unknown }).message || '');
+          if (!errorMessage.includes('404')) {
+            console.debug('LCU polling error:', e);
+          }
         }
       }
     }, 1000);

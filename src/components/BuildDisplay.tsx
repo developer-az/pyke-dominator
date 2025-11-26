@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Build, RunePage, Item, MatchupAnalysis, BotLaneMatchup, DamageAnalysis } from '../logic/pykeLogic';
+import type { Build, RunePage, Item, MatchupAnalysis } from '../logic/pykeLogic';
 
 interface Props {
     build: Build;

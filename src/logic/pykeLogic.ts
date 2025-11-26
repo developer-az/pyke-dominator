@@ -131,11 +131,9 @@ export const calculateBuild = (enemyTeam: Champion[]): Build => {
     const situational: Item[] = [];
 
     // Pro play logic: Analyze bot lane matchup for item priority
-    const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman'));
     const enemySupport = enemyTeam.find(c => c.tags.includes('Support'));
     const isEnchanterSupport = enemySupport && ['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka', 'Yuumi'].includes(enemySupport.id);
     const isTankSupport = enemySupport && enemySupport.tags.includes('Tank');
-    const isMobileADC = enemyADC && ['Ezreal', 'Lucian', 'Caitlyn', 'Vayne', 'Tristana'].includes(enemyADC.id);
     
     if (squishyThreats >= 3) {
         // SNOWBALL MODE - Pro play: Voltaic Cyclosword is often first item for burst
@@ -349,15 +347,8 @@ const PYKE_ABILITIES = {
     }
 };
 
-// Base stats at different levels
-const PYKE_STATS = {
-    level3: { ad: 62, bonusAd: 0 },
-    level6: { ad: 75, bonusAd: 0 },
-    level6WithItems: { ad: 75, bonusAd: 25 } // Assuming first item component
-};
-
 // Calculate damage for Pyke combo
-const calculatePykeDamage = (level: number, hasUlt: boolean, bonusAd: number = 0): DamageAnalysis => {
+const calculatePykeDamage = (_level: number, hasUlt: boolean, bonusAd: number = 0): DamageAnalysis => {
     const level3Combo = 
         PYKE_ABILITIES.Q.base[0] + (PYKE_ABILITIES.Q.scaling * bonusAd) + // Q damage
         PYKE_ABILITIES.E.base[0] + (PYKE_ABILITIES.E.scaling * bonusAd) + // E damage
