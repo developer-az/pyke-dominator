@@ -14,6 +14,7 @@ const App: React.FC = () => {
     Mid: null,
     Bot: null,
     Support: null,
+    YourADC: null, // Your ADC for 2v2 comparison
   });
   const [build, setBuild] = useState<Build | null>(null);
   const [runes, setRunes] = useState<RunePage | null>(null);
@@ -164,13 +165,16 @@ const App: React.FC = () => {
 
   // Recalculate Build & Analysis
   useEffect(() => {
-    const enemies = Object.values(selections).filter(c => c !== null) as Champion[];
+    // Separate enemy team from your ADC
+    const enemyRoles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
+    const enemies = enemyRoles.map(role => selections[role]).filter(c => c !== null) as Champion[];
+    const yourADC = selections.YourADC;
 
     if (enemies.length > 0) {
       const currentBuild = calculateBuild(enemies);
       setBuild(currentBuild);
       setRunes(calculateRunes(enemies, currentBuild));
-      setAnalysis(analyzeMatchup(enemies, currentBuild));
+      setAnalysis(analyzeMatchup(enemies, currentBuild, yourADC));
     } else {
       setBuild(null);
       setRunes(null);
@@ -387,6 +391,20 @@ const App: React.FC = () => {
                 champions={champions}
                 selections={selections}
                 onSelectionChange={handleSelectionChange}
+                roles={['Top', 'Jungle', 'Mid', 'Bot', 'Support']}
+              />
+            </div>
+            
+            {/* Your ADC Selection */}
+            <div className="bg-slate-900/60 p-6 rounded-xl border border-blue-500/30 backdrop-blur-md shadow-xl hover:border-blue-500/50 transition-all duration-300">
+              <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
+                <span className="text-blue-400 text-2xl">⚔</span> Your Team
+              </h2>
+              <ChampionSelect
+                champions={champions}
+                selections={selections}
+                onSelectionChange={handleSelectionChange}
+                roles={['YourADC']}
               />
             </div>
           </div>

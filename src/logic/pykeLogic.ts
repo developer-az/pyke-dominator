@@ -445,16 +445,18 @@ const estimateSupportDamage = (supportName: string, level: number): number => {
 const calculateBotLaneDamage = (
     enemyADC: Champion | null,
     enemySupport: Champion | null,
+    yourADC: Champion | null,
     pykeDamage: DamageAnalysis
 ): BotLaneDamageComparison => {
+    // Enemy combo: Enemy Bot + Enemy Support
     const enemyLevel3 = (enemyADC ? estimateADCDamage(enemyADC.id, 3) : 0) + 
                         (enemySupport ? estimateSupportDamage(enemySupport.id, 3) : 0);
     const enemyLevel6 = (enemyADC ? estimateADCDamage(enemyADC.id, 6) : 0) + 
                         (enemySupport ? estimateSupportDamage(enemySupport.id, 6) : 0);
     
-    // Your combo includes Pyke + estimated ADC damage (assuming standard ADC)
-    const yourADCLevel3 = 180; // Average ADC damage at level 3
-    const yourADCLevel6 = 320; // Average ADC damage at level 6
+    // Your combo: Your Bot + Pyke (Support)
+    const yourADCLevel3 = yourADC ? estimateADCDamage(yourADC.id, 3) : 180; // Default if not selected
+    const yourADCLevel6 = yourADC ? estimateADCDamage(yourADC.id, 6) : 320; // Default if not selected
     
     const yourLevel3 = pykeDamage.level3Combo + yourADCLevel3;
     const yourLevel6 = pykeDamage.level6Combo + yourADCLevel6;
@@ -467,13 +469,13 @@ const calculateBotLaneDamage = (
         enemyCombo: {
             level3: Math.round(enemyLevel3),
             level6: Math.round(enemyLevel6),
-            description: `${enemyADC?.name || 'ADC'} + ${enemySupport?.name || 'Support'} combo`
+            description: `${enemyADC?.name || 'Enemy ADC'} + ${enemySupport?.name || 'Enemy Support'}`
         },
         yourCombo: {
             level3: Math.round(yourLevel3),
             level6: Math.round(yourLevel6),
             level6WithUlt: Math.round(yourLevel6Ult),
-            description: 'Pyke + ADC combo'
+            description: `${yourADC?.name || 'Your ADC'} + Pyke`
         },
         advantage,
         notes: [
@@ -490,7 +492,7 @@ const calculateBotLaneDamage = (
 };
 
 // Analyze bot lane matchup specifically
-const analyzeBotLaneMatchup = (enemyTeam: Champion[], pykeDamage?: DamageAnalysis): BotLaneMatchup | null => {
+const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, pykeDamage?: DamageAnalysis): BotLaneMatchup | null => {
     const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman')) || null;
     const enemySupport = enemyTeam.find(c => c.tags.includes('Support')) || null;
     
@@ -527,30 +529,38 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], pykeDamage?: DamageAnalysi
         }
     }
     
-    // Analyze Support matchup
+    // Analyze Support matchup - Check specific champions FIRST before tags
     if (enemySupport) {
         const suppName = enemySupport.id;
         
-        // Tank supports
-        if (enemySupport.tags.includes('Tank')) {
-            difficulty = difficulty === 'EASY' ? 'MEDIUM' : difficulty === 'MEDIUM' ? 'HARD' : difficulty;
-            lanePhase += ' Enemy support is tanky - avoid extended trades.';
-            allInPotential = 'Focus ADC, ignore tank support in all-ins.';
-            keyCooldowns.push(`${enemySupport.name} engage tool: 12-18s`);
-        }
-        // Enchanter supports
-        else if (['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka'].includes(suppName)) {
-            difficulty = difficulty === 'VERY_HARD' ? 'VERY_HARD' : 'MEDIUM';
+        // Enchanter supports (check by name first to avoid tag confusion)
+        if (['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka', 'Yuumi', 'Sona', 'Seraphine', 'Renata'].includes(suppName)) {
+            difficulty = difficulty === 'VERY_HARD' ? 'VERY_HARD' : difficulty === 'EASY' ? 'MEDIUM' : difficulty;
             lanePhase += ' Enchanter support - they will shield/heal. Burst is key.';
             allInPotential = 'MODERATE: Need to burst through shields. Consider Serpent\'s Fang.';
             keyCooldowns.push(`${enemySupport.name} shield/heal: 8-12s`);
         }
         // Hook supports (skill matchup)
         else if (['Thresh', 'Blitzcrank', 'Nautilus', 'Pyke'].includes(suppName)) {
-            difficulty = 'HARD';
+            difficulty = difficulty === 'EASY' ? 'MEDIUM' : 'HARD';
             lanePhase += ' Hook vs Hook matchup - whoever lands hook first wins.';
             allInPotential = 'HIGH: Skill matchup. Bait their hook, then engage.';
             keyCooldowns.push(`${enemySupport.name} hook: 12-16s`);
+        }
+        // Tank supports (check by name for common tanks, then fallback to tags)
+        else if (['Leona', 'Braum', 'Taric', 'Alistar', 'Rell', 'Shen'].includes(suppName) || 
+                 (enemySupport.tags.includes('Tank') && !enemySupport.tags.includes('Mage'))) {
+            difficulty = difficulty === 'EASY' ? 'MEDIUM' : difficulty === 'MEDIUM' ? 'HARD' : difficulty;
+            lanePhase += ' Enemy support is tanky - avoid extended trades.';
+            allInPotential = 'Focus ADC, ignore tank support in all-ins.';
+            keyCooldowns.push(`${enemySupport.name} engage tool: 12-18s`);
+        }
+        // Mage supports (like Brand, Zyra, Vel'Koz)
+        else if (enemySupport.tags.includes('Mage') && enemySupport.tags.includes('Support')) {
+            difficulty = difficulty === 'EASY' ? 'MEDIUM' : 'MEDIUM';
+            lanePhase += ' Mage support - high damage but squishy. Look for all-ins.';
+            allInPotential = 'HIGH: They are squishy. All-in when their key spells are down.';
+            keyCooldowns.push(`${enemySupport.name} main spell: 8-12s`);
         }
     }
     
@@ -565,13 +575,13 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], pykeDamage?: DamageAnalysi
     
     // Add damage comparison if we have Pyke damage data
     if (pykeDamage) {
-        matchup.damageComparison = calculateBotLaneDamage(enemyADC, enemySupport, pykeDamage);
+        matchup.damageComparison = calculateBotLaneDamage(enemyADC, enemySupport, yourADC, pykeDamage);
     }
     
     return matchup;
 };
 
-export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAnalysis => {
+export const analyzeMatchup = (enemyTeam: Champion[], build?: Build, yourADC?: Champion | null): MatchupAnalysis => {
     const squishies: string[] = [];
     const tanks: string[] = [];
     const ccHeavy: string[] = [];
@@ -653,7 +663,7 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build): MatchupAna
     analysis.damageAnalysis = pykeDamage;
     
     // Add bot lane specific analysis (with damage comparison)
-    const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam, pykeDamage);
+    const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam, yourADC || null, pykeDamage);
     if (botLaneMatchup) {
         analysis.botLaneMatchup = botLaneMatchup;
     }

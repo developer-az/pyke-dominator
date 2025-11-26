@@ -5,11 +5,11 @@ interface Props {
     champions: Champion[];
     onSelectionChange: (role: string, champion: Champion | null) => void;
     selections: Record<string, Champion | null>;
+    roles?: string[]; // Optional: specify which roles to show
 }
 
-const ROLES = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
-
-export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, selections }) => {
+export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, selections, roles }) => {
+    const displayRoles = roles || ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
     const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({});
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
     const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -56,8 +56,8 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
     }, []);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {ROLES.map((role) => {
+        <div className={`grid grid-cols-1 ${displayRoles.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-5'} gap-4`}>
+            {displayRoles.map((role) => {
                 const isOpen = openDropdowns[role] || false;
                 const searchTerm = searchTerms[role] || '';
                 const selectedChampion = selections[role];
@@ -65,7 +65,11 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
 
                 return (
                     <div key={role} className="flex flex-col gap-2">
-                        <label className="text-pyke-green font-bold uppercase tracking-wider text-sm mb-1">{role}</label>
+                        <label className={`font-bold uppercase tracking-wider text-sm mb-1 ${
+                            role === 'YourADC' ? 'text-blue-400' : 'text-pyke-green'
+                        }`}>
+                            {role === 'YourADC' ? 'Your ADC' : role}
+                        </label>
                         <div 
                             className="relative" 
                             ref={(el) => { dropdownRefs.current[role] = el; }}
