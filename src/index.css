@@ -18,6 +18,7 @@ body {
   min-height: 100vh;
   @apply bg-slate-900 text-slate-100;
   overflow-x: hidden;
+  position: relative;
 }
 
 /* Custom Scrollbar */

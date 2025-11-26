@@ -56,7 +56,7 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
     }, []);
 
     return (
-        <div className={`grid grid-cols-1 ${displayRoles.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-5'} gap-4`}>
+        <div className={`grid grid-cols-1 ${displayRoles.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-5'} gap-4`} style={{ overflow: 'visible' }}>
             {displayRoles.map((role) => {
                 const isOpen = openDropdowns[role] || false;
                 const searchTerm = searchTerms[role] || '';
@@ -106,7 +106,14 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
 
                             {/* Dropdown List */}
                             {isOpen && (
-                                <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                <div 
+                                    className="absolute z-[9999] w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto"
+                                    style={{ 
+                                        position: 'absolute',
+                                        zIndex: 9999,
+                                        isolation: 'isolate'
+                                    }}
+                                >
                                     {filteredChampions.length === 0 ? (
                                         <div className="p-3 text-sm text-slate-400 text-center">
                                             No champions found
