@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { calculateBuild, calculateRunes, analyzeMatchup } from './logic/pykeLogic';
-import type { Champion, Build, RunePage, MatchupAnalysis } from './logic/pykeLogic';
 import { BuildDisplay } from './components/BuildDisplay';
 import { ChampionSelect } from './components/ChampionSelect';
+import { DominanceGauge } from './components/DominanceGauge';
+import { calculateBuild, calculateRunes, analyzeMatchup, calculateDominanceFactor } from './logic/pykeLogic';
+import type { Champion, Build, RunePage, MatchupAnalysis, DominanceMetrics } from './logic/pykeLogic';
 
 
 
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   const [build, setBuild] = useState<Build | null>(null);
   const [runes, setRunes] = useState<RunePage | null>(null);
   const [analysis, setAnalysis] = useState<MatchupAnalysis | null>(null);
+  const [dominance, setDominance] = useState<DominanceMetrics | null>(null);
   const [lcuConnected, setLcuConnected] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -38,12 +40,12 @@ const App: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         interface ChampionData {
-            id: string;
-            key: string;
-            name: string;
-            tags: string[];
+          id: string;
+          key: string;
+          name: string;
+          tags: string[];
         }
-        
+
         const championsData = Object.values(data.data) as ChampionData[];
         const list: Champion[] = championsData.map((c: ChampionData) => ({
           id: c.id,
@@ -74,11 +76,16 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!lcuConnected || !window.electronAPI || champions.length === 0) return;
 
-    const interval = setInterval(async () => {
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const poll = async () => {
+      // Performance Optimization: Skip polling if window is hidden
+      if (document.hidden) return;
+
       if (!window.electronAPI) return;
       try {
         const res = await window.electronAPI.requestLCU('GET', '/lol-champ-select/v1/session');
-        
+
         // Handle 404 gracefully (not in champ select) or other errors
         if (!res.success) {
           // If it's a 404, that's expected when not in champ select - silently ignore
@@ -88,19 +95,19 @@ const App: React.FC = () => {
           // Other errors might be connection issues, but don't spam console
           return;
         }
-        
+
         if (res.success && res.data) {
           interface TeamMember {
-              championId?: number;
-              assignedPosition?: string;
-              teamPosition?: string;
-              position?: string;
+            championId?: number;
+            assignedPosition?: string;
+            teamPosition?: string;
+            position?: string;
           }
-          
+
           interface LCUSession {
-              theirTeam?: TeamMember[];
+            theirTeam?: TeamMember[];
           }
-          
+
           const sessionData = res.data as LCUSession;
           const theirTeam = sessionData.theirTeam;
           if (Array.isArray(theirTeam)) {
@@ -116,7 +123,7 @@ const App: React.FC = () => {
                 'BOTTOM': 'Bot',
                 'UTILITY': 'Support'
               };
-              
+
               theirTeam.forEach((member: TeamMember) => {
                 const championId = member.championId;
                 if (championId !== undefined && championId !== 0) {
@@ -125,19 +132,24 @@ const App: React.FC = () => {
                     // Use assignedPosition or teamPosition from LCU API
                     const lcuRole = member.assignedPosition || member.teamPosition || member.position;
                     const role = lcuRole ? roleMap[lcuRole] || null : null;
-                    
+
                     if (role) {
                       if (newSelections[role]?.id !== found.id) {
                         newSelections[role] = found;
                         hasUpdates = true;
                       }
                     } else {
-                      // Fallback: try to infer role from champion tags if LCU doesn't provide it
-                      // This is less accurate but better than index-based assignment
-                      const inferredRole = inferRoleFromChampion(found, newSelections);
-                      if (inferredRole && newSelections[inferredRole]?.id !== found.id) {
-                        newSelections[inferredRole] = found;
-                        hasUpdates = true;
+                      // Check if champion is already assigned to ANY role to prevent duplication
+                      const isAlreadyAssigned = Object.values(newSelections).some(s => s?.id === found.id);
+
+                      if (!isAlreadyAssigned) {
+                        // Fallback: try to infer role from champion tags if LCU doesn't provide it
+                        // This is less accurate but better than index-based assignment
+                        const inferredRole = inferRoleFromChampion(found, newSelections);
+                        if (inferredRole && newSelections[inferredRole]?.id !== found.id) {
+                          newSelections[inferredRole] = found;
+                          hasUpdates = true;
+                        }
                       }
                     }
                   }
@@ -158,9 +170,24 @@ const App: React.FC = () => {
           }
         }
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(interval);
+    // Poll every 1s when active
+    intervalId = setInterval(poll, 1000);
+
+    // Listener to handle visibility changes immediately
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        poll(); // Poll immediately when becoming visible
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [lcuConnected, champions]);
 
   // Recalculate Build & Analysis
@@ -175,10 +202,12 @@ const App: React.FC = () => {
       setBuild(currentBuild);
       setRunes(calculateRunes(enemies, currentBuild));
       setAnalysis(analyzeMatchup(enemies, currentBuild, yourADC));
+      setDominance(calculateDominanceFactor(enemies, currentBuild));
     } else {
       setBuild(null);
       setRunes(null);
       setAnalysis(null);
+      setDominance(null);
     }
   }, [selections]);
 
@@ -186,7 +215,7 @@ const App: React.FC = () => {
   const inferRoleFromChampion = (champion: Champion, currentSelections: { [key: string]: Champion | null }): string | null => {
     // Check if role is already taken
     const isRoleTaken = (role: string) => currentSelections[role] !== null;
-    
+
     // Marksman = Bot
     if (champion.tags.includes('Marksman') && !isRoleTaken('Bot')) {
       return 'Bot';
@@ -203,13 +232,13 @@ const App: React.FC = () => {
     if ((champion.tags.includes('Assassin') || champion.tags.includes('Mage')) && !isRoleTaken('Mid')) {
       return 'Mid';
     }
-    
+
     // Fill remaining slots
     const roles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
     for (const role of roles) {
       if (!isRoleTaken(role)) return role;
     }
-    
+
     return null;
   };
 
@@ -230,8 +259,8 @@ const App: React.FC = () => {
 
       // 2. Check if "Pyke Dominator" exists and delete it
       interface RunePage {
-          name: string;
-          id: number;
+        name: string;
+        id: number;
       }
       const existingPage = (currentPages as RunePage[]).find((p: RunePage) => p.name === runes.name);
       if (existingPage) {
@@ -271,12 +300,12 @@ const App: React.FC = () => {
         // LCU API requires current: true to make it the active page
         current: true
       };
-      
+
       console.log('Exporting rune page:', JSON.stringify(runePagePayload, null, 2));
       console.log('Primary Style:', runePagePayload.primaryStyleId, 'Secondary Style:', runePagePayload.subStyleId);
       console.log('Rune IDs:', selectedPerkIds);
       console.log('Secondary runes (indices 4-5):', selectedPerkIds[4], selectedPerkIds[5]);
-      
+
       const createRes = await window.electronAPI.requestLCU('POST', '/lol-perks/v1/pages', runePagePayload);
       if (!createRes.success) {
         console.error('LCU API Error:', createRes.error);
@@ -313,10 +342,11 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-pyke-dark text-slate-300 font-sans selection:bg-pyke-green selection:text-black">
+    <div className="min-h-screen bg-pyke-dark text-slate-200 font-sans selection:bg-pyke-green selection:text-pyke-dark overflow-x-hidden">
+
       {/* Draggable Title Bar */}
       {window.electronAPI && (
-        <div 
+        <div
           className="h-10 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-900/95 border-b border-slate-800/80 flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50 backdrop-blur-sm shadow-lg"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
@@ -358,39 +388,24 @@ const App: React.FC = () => {
       )}
       <div className={`container mx-auto p-6 max-w-7xl ${window.electronAPI ? 'pt-16' : ''}`}>
         {/* Header */}
-        <header className="flex justify-between items-center mb-10 border-b border-slate-800 pb-6 animate-fade-in">
+        <header className="flex justify-between items-center mb-10 border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_10px_rgba(0,255,157,0.4)] hover:drop-shadow-[0_0_15px_rgba(0,255,157,0.6)] transition-all duration-300">
+            <h1 className="text-4xl font-display font-bold text-white tracking-wider uppercase">
               Pyke Dominator
             </h1>
-            <span className="px-3 py-1 rounded-md text-xs font-bold bg-slate-800/80 text-slate-400 border border-slate-700/50 backdrop-blur-sm">
-              V1.0.0
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 tracking-widest">
+              V1.2.0
             </span>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border backdrop-blur-sm transition-all duration-300 ${
-              lcuConnected 
-                ? 'border-green-500/50 bg-green-500/10 shadow-lg shadow-green-500/10' 
-                : (!window.electronAPI 
-                  ? 'border-blue-500/50 bg-blue-500/10 shadow-lg shadow-blue-500/10' 
-                  : 'border-red-500/50 bg-red-500/10 shadow-lg shadow-red-500/10')
-            }`}>
-              <div className={`w-2.5 h-2.5 rounded-full transition-all ${
-                lcuConnected 
-                  ? 'bg-green-500 animate-pulse shadow-lg shadow-green-500/50' 
-                  : (!window.electronAPI 
-                    ? 'bg-blue-500 shadow-lg shadow-blue-500/50' 
-                    : 'bg-red-500 shadow-lg shadow-red-500/50')
-              }`}></div>
-              <span className={`text-xs font-bold uppercase tracking-wider ${
-                lcuConnected 
-                  ? 'text-green-400' 
-                  : (!window.electronAPI 
-                    ? 'text-blue-400' 
-                    : 'text-red-400')
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded border transition-all duration-300 ${lcuConnected
+              ? 'border-green-900/50 bg-green-900/20 text-green-400'
+              : 'border-slate-800 bg-slate-900/50 text-slate-500'
               }`}>
-                {lcuConnected ? 'Live Link Active' : (!window.electronAPI ? 'Web Mode (Demo)' : 'Client Disconnected')}
+              <div className={`w-2 h-2 rounded-full ${lcuConnected ? 'bg-green-500' : 'bg-slate-500'}`}></div>
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {lcuConnected ? 'Live' : 'Demo'}
               </span>
             </div>
           </div>
@@ -399,9 +414,10 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 relative">
           {/* Left Panel: Enemy Selection */}
           <div className="xl:col-span-3 space-y-6 animate-slide-in relative" style={{ zIndex: 100 }}>
-            <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800/80 backdrop-blur-md shadow-xl hover:border-slate-700/80 transition-all duration-300 relative" style={{ zIndex: 100, overflow: 'visible' }}>
-              <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
-                <span className="text-pyke-green text-2xl">///</span> Enemy Composition
+            <div className="bg-pyke-dark-light/90 p-6 rounded-xl border border-pyke-accent backdrop-blur-xl shadow-2xl hover:border-pyke-green/50 transition-all duration-500 group relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pyke-green/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2 uppercase tracking-wider">
+                <span className="text-pyke-green text-2xl drop-shadow-[0_0_5px_rgba(0,255,157,0.8)]">///</span> Enemy Squad
               </h2>
               <ChampionSelect
                 champions={champions}
@@ -410,11 +426,19 @@ const App: React.FC = () => {
                 roles={['Top', 'Jungle', 'Mid', 'Bot', 'Support']}
               />
             </div>
-            
+
+            {/* Dominance Gauge */}
+            {dominance && (
+              <div className="animate-slide-in" style={{ animationDelay: '0.1s' }}>
+                <DominanceGauge metrics={dominance} />
+              </div>
+            )}
+
             {/* Your ADC Selection */}
-            <div className="bg-slate-900/60 p-6 rounded-xl border border-blue-500/30 backdrop-blur-md shadow-xl hover:border-blue-500/50 transition-all duration-300 relative" style={{ zIndex: 100, overflow: 'visible' }}>
-              <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2">
-                <span className="text-blue-400 text-2xl">⚔</span> Your Team
+            <div className="bg-pyke-dark-light/90 p-6 rounded-xl border border-pyke-accent backdrop-blur-xl shadow-2xl hover:border-blue-500/50 transition-all duration-500 group relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <h2 className="text-xl font-display text-white mb-6 flex items-center gap-2 uppercase tracking-wider">
+                <span className="text-blue-400 text-2xl drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]">⚔</span> Ally Carry
               </h2>
               <ChampionSelect
                 champions={champions}
@@ -437,10 +461,11 @@ const App: React.FC = () => {
                 exportStatus={exportStatus}
               />
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800/50 rounded-xl p-12 bg-slate-900/20 backdrop-blur-sm animate-fade-in">
-                <div className="text-6xl mb-4 opacity-30 animate-pulse">⚔️</div>
-                <p className="text-xl font-display tracking-wider text-slate-500">Awaiting Enemy Intelligence...</p>
-                <p className="text-sm mt-2 text-slate-600">Select enemy champions to generate your loadout.</p>
+              <div className="h-full flex flex-col items-center justify-center text-slate-500 border border-dashed border-pyke-accent rounded-xl p-12 bg-pyke-dark-light/30 backdrop-blur-sm animate-fade-in relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-pyke-green/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                <div className="text-7xl mb-6 opacity-20 animate-pulse text-pyke-green">⚔️</div>
+                <p className="text-2xl font-display tracking-[0.2em] text-slate-400 uppercase">Awaiting Data</p>
+                <p className="text-sm mt-3 text-slate-600 font-mono border-t border-slate-800 pt-3">Select enemy champions to initialize tactical analysis.</p>
               </div>
             )}
           </div>

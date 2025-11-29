@@ -64,7 +64,7 @@ const ITEMS = {
     GUARDIAN_ANGEL: { id: '3026', name: 'Guardian Angel', icon: 'Guardian_Angel', reason: 'Revive passive allows for aggressive plays without giving up shutdowns.' },
     MERCURIAL_SCIMITAR: { id: '3139', name: 'Mercurial Scimitar', icon: 'Mercurial_Scimitar', reason: 'Cleanse active is mandatory against suppression (Malzahar/Warwick/Skarner).' },
     DEATHS_DANCE: { id: '6333', name: 'Death\'s Dance', icon: 'Death_s_Dance', reason: 'Delays incoming damage, preventing instant burst from physical assassins.' },
-    UMBRAL_GLAIVE: { id: '3179', name: 'Umbral Glaive', icon: 'Umbral_Glaive', reason: 'Vision control dominance; clear wards instantly.' },
+    UMBRAL_GLAIVE: { id: '3179', name: 'Umbral Glaive', icon: 'Umbral_Glaive', reason: 'ESSENTIAL: Deny vision to assassinate from bushes. One-shot wards instantly.' },
     SERPENTS_FANG: { id: '6695', name: 'Serpent\'s Fang', icon: 'Serpents_Fang', reason: 'Shield Reaver passive destroys enemy shields (Lulu, Sett, Tahm Kench).' },
     CHEMPUNK_CHAINSWORD: { id: '6609', name: 'Chempunk Chainsword', icon: 'Chempunk_Chainsword', reason: 'Applies Grievous Wounds to counter heavy healing (Soraka, Aatrox, Sylas).' },
 };
@@ -131,36 +131,39 @@ export const calculateBuild = (enemyTeam: Champion[]): Build => {
     const situational: Item[] = [];
 
     // Pro play logic: Analyze bot lane matchup for item priority
-    const enemySupport = enemyTeam.find(c => c.tags.includes('Support'));
-    const isEnchanterSupport = enemySupport && ['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka', 'Yuumi'].includes(enemySupport.id);
-    const isTankSupport = enemySupport && enemySupport.tags.includes('Tank');
-    
+
     if (squishyThreats >= 3) {
         // SNOWBALL MODE - Pro play: Voltaic Cyclosword is often first item for burst
+        // UPDATED: Umbral Glaive is now ALWAYS first for vision control/assassination
         build.core = [
-            { ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'PRO PLAY: Voltaic Cyclosword first for maximum burst. Energized slow sets up guaranteed Q hits.' },
-            { ...ITEMS.AXIOM_ARC, reason: 'PRO PLAY: Axiom Arc 2nd ensures Ultimate resets. Critical for snowballing teamfights.' }
+            { ...ITEMS.UMBRAL_GLAIVE, reason: 'CORE ITEM: Deny vision to set up assassinations. Essential even in snowball games.' },
+            { ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'Burst damage and slow. Follow up with this to secure kills.' }
         ];
+
+        // Axiom Arc moves to situational/3rd item logic (handled below or added here)
+        situational.push({ ...ITEMS.AXIOM_ARC, reason: 'PRO PLAY: Axiom Arc ensures Ultimate resets. Critical for snowballing teamfights.' });
         // Hubris is situational in pro play - only if you're confident you can stack it
         situational.push({ ...ITEMS.HUBRIS, reason: 'Snowball item: Gain massive AD from takedowns. Only if you can reliably get kills.' });
         situational.push({ ...ITEMS.OPPORTUNITY, reason: 'Movement speed and lethality after kills. Great for cleanup and resets.' });
     } else {
         // CONTROL MODE (Vs Tanks or Harder Comps)
         // Pro play: Umbral Glaive is almost always first item for vision control
-        const shouldRushUmbral = isTankSupport || isEnchanterSupport || tankThreats >= 2;
-        
+        // UPDATED: Umbral is now prioritized for "Assassinating from bushes"
+        const shouldRushUmbral = true; // Make it the default recommendation for Pyke's identity
+
         if (shouldRushUmbral) {
             build.core = [
-                { ...ITEMS.UMBRAL_GLAIVE, reason: 'PRO PLAY: Umbral Glaive first for vision control. Essential against tank/enchanter supports.' },
-                { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'PRO PLAY: Youmuu\'s 2nd for roaming potential. Mobility to impact other lanes.' }
+                { ...ITEMS.UMBRAL_GLAIVE, reason: 'CORE ITEM: Vision control is key to Pyke\'s kit. Clear wards to set up bush assassinations.' },
+                { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'High mobility for roaming. Get to lanes faster.' }
             ];
+            // Add Voltaic as situational/next
+            situational.push({ ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'Burst damage and slow. Good follow-up item.' });
         } else {
-            // Standard control build
+            // Fallback (rarely used now)
             build.core = [
                 { ...ITEMS.VOLTAIC_CYCLOSWORD, reason: 'Control Mode: Burst damage for picks. Slows help secure kills.' },
                 { ...ITEMS.YOUMUUS_GHOSTBLADE, reason: 'Mobility to roam and impact other lanes since you cannot one-shot tanks.' }
             ];
-            // Add Umbral as situational for vision control
             situational.push({ ...ITEMS.UMBRAL_GLAIVE, reason: 'Vision control dominance. Consider if enemy has good vision setup.' });
         }
     }
@@ -203,18 +206,22 @@ export const calculateBuild = (enemyTeam: Champion[]): Build => {
     // Logic: Starter -> Core 1 -> Boots -> Core 2 -> Situational
     const buildPathItems: Item[] = [
         ITEMS.WORLD_ATLAS,
+        { ...ITEMS.POTION, reason: 'EARLY GAME: Start with World Atlas and Potions. Play for level 2 spike.' },
         { ...build.core[0], reason: 'RUSH ITEM: ' + (build.core[0].reason || 'Core power spike.') }
     ];
-    
+
     // Boots timing: Usually after first item, but can be earlier if needed
     buildPathItems.push({ ...build.boots, reason: 'TIER 2 BOOTS: ' + (build.boots.reason || 'Mobility.') });
-    
+
     // Second core item
-    buildPathItems.push({ ...build.core[1], reason: 'SECOND CORE: ' + (build.core[1].reason || 'Follow up damage.') });
-    
+    buildPathItems.push({ ...build.core[1], reason: 'MID GAME: ' + (build.core[1].reason || 'Follow up damage.') });
+
     // Situational items
     buildPathItems.push(...build.situational);
-    
+
+    // Endgame / Elixir
+    buildPathItems.push({ id: '2140', name: 'Elixir of Wrath', icon: 'Elixir_of_Wrath', reason: 'ENDGAME: Consumable for final teamfights. Buy when full build or for decisive objectives.' });
+
     build.buildPath = buildPathItems;
 
     return build;
@@ -260,7 +267,7 @@ export const calculateRunes = (enemyTeam: Champion[], build?: Build): RunePage =
         secondaryStyleId = 8400; // Resolve
         secondaryRune1 = 8444; // Second Wind
         secondaryRune2 = 8242; // Unflinching (ID updated for Season 15)
-        
+
         reasons[8444] = `Second Wind: Chosen because enemy has ${pokeThreats} poke threats. Regenerates health after taking damage.`;
         reasons[8242] = "Unflinching: Grants tenacity when your summoner spells are down.";
     } else {
@@ -268,7 +275,7 @@ export const calculateRunes = (enemyTeam: Champion[], build?: Build): RunePage =
         secondaryStyleId = 8000; // Precision
         secondaryRune1 = 8009; // Presence of Mind
         secondaryRune2 = 8014; // Coup de Grace
-        
+
         reasons[8009] = "Presence of Mind: MANA SUSTAIN. Restores mana on takedowns, ensuring you never run dry during reset chains.";
         reasons[8014] = "Coup de Grace: Deal more damage to low health enemies. Synergizes with Pyke's R execute threshold.";
     }
@@ -366,19 +373,19 @@ const PYKE_ABILITIES = {
 
 // Calculate damage for Pyke combo
 const calculatePykeDamage = (_level: number, hasUlt: boolean, bonusAd: number = 0): DamageAnalysis => {
-    const level3Combo = 
+    const level3Combo =
         PYKE_ABILITIES.Q.base[0] + (PYKE_ABILITIES.Q.scaling * bonusAd) + // Q damage
         PYKE_ABILITIES.E.base[0] + (PYKE_ABILITIES.E.scaling * bonusAd) + // E damage
         50; // Auto attack estimate
-    
-    const level6Combo = 
+
+    const level6Combo =
         PYKE_ABILITIES.Q.base[1] + (PYKE_ABILITIES.Q.scaling * bonusAd) + // Q level 2
         PYKE_ABILITIES.E.base[2] + (PYKE_ABILITIES.E.scaling * bonusAd) + // E level 3
         75; // Auto attacks
-    
-    const level6WithUlt = level6Combo + 
+
+    const level6WithUlt = level6Combo +
         PYKE_ABILITIES.R.base[0] + (PYKE_ABILITIES.R.scaling * bonusAd); // R level 1
-    
+
     // Execute thresholds
     let killThreshold = '';
     if (hasUlt) {
@@ -386,7 +393,7 @@ const calculatePykeDamage = (_level: number, hasUlt: boolean, bonusAd: number = 
     } else {
         killThreshold = `Q execute threshold: ~${Math.round(level6Combo * 0.175)} HP (17.5% max HP)`;
     }
-    
+
     return {
         level3Combo: Math.round(level3Combo),
         level6Combo: Math.round(level6Combo),
@@ -416,8 +423,19 @@ const estimateADCDamage = (adcName: string, level: number): number => {
         'Tristana': { level3: 240, level6: 420 },
         'KogMaw': { level3: 190, level6: 340 },
         'Twitch': { level3: 200, level6: 360 },
+        'Draven': { level3: 280, level6: 500 }, // High damage
+        'MissFortune': { level3: 230, level6: 400 },
+        'Jhin': { level3: 210, level6: 380 }, // 4th shot execute
+        'KaiSa': { level3: 200, level6: 380 },
+        'Samira': { level3: 240, level6: 450 },
+        'Kalista': { level3: 210, level6: 360 },
+        'Xayah': { level3: 220, level6: 390 },
+        'Sivir': { level3: 190, level6: 340 },
+        'Aphelios': { level3: 200, level6: 370 },
+        'Zeri': { level3: 180, level6: 330 },
+        'Nilah': { level3: 230, level6: 420 },
     };
-    
+
     const damage = adcDamage[adcName] || { level3: 200, level6: 350 };
     return level <= 3 ? damage.level3 : damage.level6;
 };
@@ -435,8 +453,27 @@ const estimateSupportDamage = (supportName: string, level: number): number => {
         'Nautilus': { level3: 200, level6: 350 },
         'Leona': { level3: 180, level6: 320 },
         'Pyke': { level3: 250, level6: 450 },
+        'Senna': { level3: 180, level6: 300 },
+        'Lux': { level3: 220, level6: 400 },
+        'Xerath': { level3: 230, level6: 420 },
+        'Brand': { level3: 250, level6: 450 },
+        'Zyra': { level3: 240, level6: 430 },
+        'VelKoz': { level3: 230, level6: 420 },
+        'Swain': { level3: 200, level6: 380 },
+        'Morgana': { level3: 190, level6: 350 },
+        'Rakan': { level3: 160, level6: 280 },
+        'Braum': { level3: 150, level6: 250 },
+        'Alistar': { level3: 140, level6: 240 },
+        'Maokai': { level3: 180, level6: 320 },
+        'Bard': { level3: 170, level6: 300 },
+        'Renata': { level3: 140, level6: 250 },
+        'Yuumi': { level3: 80, level6: 150 },
+        'Sona': { level3: 120, level6: 220 },
+        'Seraphine': { level3: 160, level6: 300 },
+        'Taric': { level3: 150, level6: 250 },
+        'Rell': { level3: 140, level6: 240 },
     };
-    
+
     const damage = supportDamage[supportName] || { level3: 150, level6: 250 };
     return level <= 3 ? damage.level3 : damage.level6;
 };
@@ -457,6 +494,17 @@ const estimateUltimateDamage = (championName: string, isADC: boolean): number =>
             'Tristana': 300, // Buster Shot
             'KogMaw': 280, // Living Artillery
             'Twitch': 250, // Spray and Pray (DPS ult)
+            'Draven': 350, // Whirling Death
+            'MissFortune': 400, // Bullet Time (potential)
+            'Jhin': 300, // Curtain Call
+            'KaiSa': 150, // Killer Instinct (Shield/Dash) - Low damage
+            'Samira': 350, // Inferno Trigger
+            'Kalista': 0, // Utility
+            'Xayah': 200, // Featherstorm
+            'Sivir': 0, // Utility
+            'Aphelios': 250, // Moonlight Vigil
+            'Zeri': 200, // Lightning Crash
+            'Nilah': 250, // Apotheosis
         };
         return adcUltDamage[championName] || 300;
     } else {
@@ -472,6 +520,25 @@ const estimateUltimateDamage = (championName: string, isADC: boolean): number =>
             'Nautilus': 200, // Depth Charge
             'Leona': 200, // Solar Flare
             'Pyke': 0, // Execute (handled separately)
+            'Senna': 250, // Dawning Shadow
+            'Lux': 300, // Final Spark
+            'Xerath': 350, // Rite of the Arcane
+            'Brand': 350, // Pyroclasm
+            'Zyra': 300, // Stranglethorns
+            'VelKoz': 400, // Life Form Disintegration Ray
+            'Swain': 200, // Demonic Ascension (DoT)
+            'Morgana': 250, // Soul Shackles
+            'Rakan': 150, // The Quickness
+            'Braum': 150, // Glacial Fissure
+            'Alistar': 0, // Unbreakable Will
+            'Maokai': 200, // Nature's Grasp
+            'Bard': 150, // Tempered Fate (Damage? No, Utility) -> 0
+            'Renata': 0, // Hostile Takeover
+            'Yuumi': 150, // Final Chapter
+            'Sona': 150, // Crescendo
+            'Seraphine': 200, // Encore
+            'Taric': 0, // Cosmic Radiance
+            'Rell': 100, // Magnet Storm
         };
         return supportUltDamage[championName] || 200;
     }
@@ -488,35 +555,35 @@ const calculateBotLaneDamage = (
     const enemyADCLevel3 = enemyADC ? estimateADCDamage(enemyADC.id, 3) : 200;
     const enemySupportLevel3 = enemySupport ? estimateSupportDamage(enemySupport.id, 3) : 150;
     const enemyLevel3 = enemyADCLevel3 + enemySupportLevel3;
-    
+
     const enemyADCLevel6 = enemyADC ? estimateADCDamage(enemyADC.id, 6) : 350;
     const enemySupportLevel6 = enemySupport ? estimateSupportDamage(enemySupport.id, 6) : 250;
     const enemyLevel6 = enemyADCLevel6 + enemySupportLevel6;
-    
+
     // Enemy level 6 with ultimates
     const enemyADCUlt = enemyADC ? estimateUltimateDamage(enemyADC.id, true) : 300;
     const enemySupportUlt = enemySupport ? estimateUltimateDamage(enemySupport.id, false) : 200;
     const enemyLevel6WithUlt = enemyLevel6 + enemyADCUlt + enemySupportUlt;
-    
+
     // Your combo: Your Bot + Pyke (Support)
     const yourADCLevel3 = yourADC ? estimateADCDamage(yourADC.id, 3) : 200; // Default if not selected
     const yourADCLevel6 = yourADC ? estimateADCDamage(yourADC.id, 6) : 350; // Default if not selected
     const yourADCUlt = yourADC ? estimateUltimateDamage(yourADC.id, true) : 300;
-    
+
     const yourLevel3 = pykeDamage.level3Combo + yourADCLevel3;
     const yourLevel6 = pykeDamage.level6Combo + yourADCLevel6;
     const yourLevel6WithUlt = pykeDamage.level6WithUlt + yourADCLevel6 + yourADCUlt;
-    
+
     // Compare like-for-like: no ult vs no ult, ult vs ult
     // Advantage is based on both scenarios
     const advantageNoUlt = yourLevel6 > enemyLevel6 ? 1 : yourLevel6 < enemyLevel6 ? -1 : 0;
     const advantageWithUlt = yourLevel6WithUlt > enemyLevel6WithUlt ? 1 : yourLevel6WithUlt < enemyLevel6WithUlt ? -1 : 0;
-    
+
     // Overall advantage: if both favor us, favorable; if both favor them, unfavorable; otherwise even
     const totalAdvantage = advantageNoUlt + advantageWithUlt;
-    const advantage = totalAdvantage > 0 ? 'FAVORABLE' : 
-                     totalAdvantage < 0 ? 'UNFAVORABLE' : 'EVEN';
-    
+    const advantage = totalAdvantage > 0 ? 'FAVORABLE' :
+        totalAdvantage < 0 ? 'UNFAVORABLE' : 'EVEN';
+
     return {
         enemyCombo: {
             level3: Math.round(enemyLevel3),
@@ -538,8 +605,8 @@ const calculateBotLaneDamage = (
             `Enemy 2v2 damage at level 6 (with ults): ~${Math.round(enemyLevel6WithUlt)}`,
             `Your 2v2 damage at level 6 (with ults): ~${Math.round(yourLevel6WithUlt)}`,
             advantage === 'FAVORABLE' ? 'You win extended 2v2 trades' :
-            advantage === 'EVEN' ? '2v2 trades are skill-dependent' :
-            'Avoid extended 2v2 trades, look for picks'
+                advantage === 'EVEN' ? '2v2 trades are skill-dependent' :
+                    'Avoid extended 2v2 trades, look for picks'
         ]
     };
 };
@@ -548,18 +615,18 @@ const calculateBotLaneDamage = (
 const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, pykeDamage?: DamageAnalysis): BotLaneMatchup | null => {
     const enemyADC = enemyTeam.find(c => c.tags.includes('Marksman')) || null;
     const enemySupport = enemyTeam.find(c => c.tags.includes('Support')) || null;
-    
+
     if (!enemyADC && !enemySupport) return null;
-    
+
     let difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'VERY_HARD' = 'MEDIUM';
     let lanePhase = '';
     let allInPotential = '';
     const keyCooldowns: string[] = [];
-    
+
     // Analyze ADC matchup
     if (enemyADC) {
         const adcName = enemyADC.id;
-        
+
         // Easy matchups (immobile ADCs)
         if (['Ashe', 'Jinx', 'Varus', 'KogMaw', 'Twitch'].includes(adcName)) {
             difficulty = 'EASY';
@@ -581,11 +648,11 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, 
             keyCooldowns.push(`${enemyADC.name} spell shield: 20-24s`);
         }
     }
-    
+
     // Analyze Support matchup - Check specific champions FIRST before tags
     if (enemySupport) {
         const suppName = enemySupport.id;
-        
+
         // Enchanter supports (check by name first to avoid tag confusion)
         if (['Lulu', 'Janna', 'Karma', 'Nami', 'Soraka', 'Yuumi', 'Sona', 'Seraphine', 'Renata'].includes(suppName)) {
             difficulty = difficulty === 'VERY_HARD' ? 'VERY_HARD' : difficulty === 'EASY' ? 'MEDIUM' : difficulty;
@@ -601,8 +668,8 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, 
             keyCooldowns.push(`${enemySupport.name} hook: 12-16s`);
         }
         // Tank supports (check by name for common tanks, then fallback to tags)
-        else if (['Leona', 'Braum', 'Taric', 'Alistar', 'Rell', 'Shen'].includes(suppName) || 
-                 (enemySupport.tags.includes('Tank') && !enemySupport.tags.includes('Mage'))) {
+        else if (['Leona', 'Braum', 'Taric', 'Alistar', 'Rell', 'Shen'].includes(suppName) ||
+            (enemySupport.tags.includes('Tank') && !enemySupport.tags.includes('Mage'))) {
             difficulty = difficulty === 'EASY' ? 'MEDIUM' : difficulty === 'MEDIUM' ? 'HARD' : difficulty;
             lanePhase += ' Enemy support is tanky - avoid extended trades.';
             allInPotential = 'Focus ADC, ignore tank support in all-ins.';
@@ -616,7 +683,7 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, 
             keyCooldowns.push(`${enemySupport.name} main spell: 8-12s`);
         }
     }
-    
+
     const matchup: BotLaneMatchup = {
         enemyADC,
         enemySupport,
@@ -625,12 +692,12 @@ const analyzeBotLaneMatchup = (enemyTeam: Champion[], yourADC: Champion | null, 
         allInPotential: allInPotential || 'MODERATE: Standard all-in potential.',
         keyCooldowns
     };
-    
+
     // Add damage comparison if we have Pyke damage data
     if (pykeDamage) {
         matchup.damageComparison = calculateBotLaneDamage(enemyADC, enemySupport, yourADC, pykeDamage);
     }
-    
+
     return matchup;
 };
 
@@ -678,12 +745,12 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build, yourADC?: C
         analysis.description = "You cannot kill their frontline. Do NOT force fights 2v2 bot lane against tanks.";
         analysis.winCondition = "Abandon lane (roam) to get your Mid/Jungle ahead. Peel for your Carry in fights.";
         analysis.aggressionLevel = "LOW";
-        
+
         // Only suggest Umbral Glaive if it's actually in the build
-        const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) || 
-                         build?.situational.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) ||
-                         build?.buildPath.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
-        
+        const hasUmbral = build?.core.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) ||
+            build?.situational.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id) ||
+            build?.buildPath.some(i => i.id === ITEMS.UMBRAL_GLAIVE.id);
+
         const tips = [];
         if (hasUmbral) {
             tips.push("Rush Umbral Glaive to deny vision and control the map.");
@@ -693,7 +760,7 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build, yourADC?: C
         tips.push("Use Q to peel divers off your ADC, not just to engage.");
         tips.push("Your R is for executing low targets, not starting fights.");
         tips.push("Look for roams mid when bot lane is pushed in.");
-        
+
         analysis.tips = tips;
     }
     // Scenario 3: Poke Lane (Sustain)
@@ -714,12 +781,122 @@ export const analyzeMatchup = (enemyTeam: Champion[], build?: Build, yourADC?: C
     const bonusAd = hasUmbral ? 0 : 0; // No items at level 6 typically
     const pykeDamage = calculatePykeDamage(6, true, bonusAd);
     analysis.damageAnalysis = pykeDamage;
-    
+
     // Add bot lane specific analysis (with damage comparison)
     const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam, yourADC || null, pykeDamage);
     if (botLaneMatchup) {
         analysis.botLaneMatchup = botLaneMatchup;
     }
-    
+
     return analysis;
+};
+
+// --- NEW: Dominance Factor Engine ---
+
+export interface DominanceMetrics {
+    score: number; // 0-100
+    grade: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+    title: string;
+    summary: string;
+    earlyGameScore: number;
+    midGameScore: number;
+    lateGameScore: number;
+}
+
+export const calculateDominanceFactor = (enemyTeam: Champion[], build: Build): DominanceMetrics => {
+    let score = 50; // Base score
+
+    // 1. Composition Analysis
+    let squishies = 0;
+    let tanks = 0;
+    let hardCC = 0;
+    let easyTargets = 0; // Immobile squishies
+
+    enemyTeam.forEach(c => {
+        const isSquishy = c.tags.includes('Marksman') || c.tags.includes('Mage') || c.tags.includes('Assassin') || c.tags.includes('Support');
+        const isTank = c.tags.includes('Tank') || c.tags.includes('Fighter');
+
+        if (isSquishy && !isTank) {
+            squishies++;
+            // Bonus for immobile targets (simplified check)
+            if (['Ashe', 'Jinx', 'Varus', 'KogMaw', 'Twitch', 'VelKoz', 'Xerath', 'Lux', 'Soraka', 'Sona'].includes(c.id)) {
+                easyTargets++;
+            }
+        }
+        if (isTank) tanks++;
+        if (c.tags.includes('Tank') || (c.tags.includes('Support') && c.tags.includes('Mage'))) hardCC++; // Rough proxy
+    });
+
+    // Scoring Logic
+    score += (squishies * 10); // Pyke loves squishies
+    score += (easyTargets * 5); // Pyke LOVES immobile squishies
+    score -= (tanks * 8); // Pyke hates tanks
+    score -= (hardCC * 5); // Pyke hates CC
+
+    // 2. Build Synergy Check
+    // If we have Umbral vs Vision/Traps, bonus
+    if (build.core.some(i => i.id === '3179') && enemyTeam.some(c => c.tags.includes('Support'))) {
+        score += 5;
+    }
+    // If we have Serpent's Fang vs Shields, bonus
+    if (build.situational.some(i => i.id === '6695') && enemyTeam.some(c => ['Lulu', 'Janna', 'Karma', 'Sett'].includes(c.id))) {
+        score += 10;
+    }
+
+    // Cap Score
+    score = Math.min(100, Math.max(0, score));
+
+    // Grading
+    let grade: DominanceMetrics['grade'] = 'C';
+    if (score >= 95) grade = 'S+';
+    else if (score >= 85) grade = 'S';
+    else if (score >= 70) grade = 'A';
+    else if (score >= 55) grade = 'B';
+    else if (score >= 40) grade = 'C';
+    else grade = 'D';
+
+    // Phase Scores (Estimates based on matchup)
+    // Pyke is generally strong early, falls off late unless snowballing
+    let early = 80;
+    let mid = 70;
+    let late = 40;
+
+    if (squishies >= 3) {
+        early += 10;
+        mid += 15; // Reset city
+        late += 10; // Still useful for executes
+    }
+    if (tanks >= 2) {
+        early -= 10;
+        mid -= 10;
+        late -= 20; // Useless vs tanks late
+    }
+
+    return {
+        score,
+        grade,
+        title: getDominanceTitle(grade),
+        summary: getDominanceSummary(grade, squishies, tanks),
+        earlyGameScore: Math.min(100, early),
+        midGameScore: Math.min(100, mid),
+        lateGameScore: Math.min(100, late)
+    };
+};
+
+const getDominanceTitle = (grade: string): string => {
+    switch (grade) {
+        case 'S+': return 'ABSOLUTE PREDATOR';
+        case 'S': return 'DOMINANT FORCE';
+        case 'A': return 'FAVORABLE MATCHUP';
+        case 'B': return 'SKILL MATCHUP';
+        case 'C': return 'UPHILL BATTLE';
+        case 'D': return 'SURVIVAL HORROR';
+        default: return 'UNKNOWN';
+    }
+};
+
+const getDominanceSummary = (grade: string, squishies: number, tanks: number): string => {
+    if (grade === 'S+' || grade === 'S') return `The waters are filled with ${squishies} soft targets. This is a perfect game for Pyke. Reset city awaits.`;
+    if (grade === 'A' || grade === 'B') return "A balanced fight. Look for picks on the backline and avoid the frontline engage.";
+    return `Heavy tank presence (${tanks}) or high CC makes this difficult. Focus on vision, roaming, and peeling. Do not force engages.`;
 };
