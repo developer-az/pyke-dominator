@@ -79,3 +79,5 @@ export const getRuneData = async (runeId: number): Promise<RuneData | null> => {
     return runes.get(runeId) || null;
 };
 
+
+
