@@ -67,5 +67,22 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           draft: false
-          prerelease: false
+          # First public line is beta — keep GitHub "Pre-release" checked for *-beta* tags
+          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          name: Dominator ${{ github.ref_name }}
+          body: |
+            **Dominator ${{ github.ref_name }}** — first public beta for real client testing.
+
+            ### Try it
+            - Install the Windows `.exe` from Assets below
+            - Use **Borderless** display mode in League
+            - Connect with the League client open, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) to align HUD/minimap guides
+
+            ### In this beta
+            - Pyke Support + Yone Mid profiles
+            - LCU rune/item export
+            - In-game overlay cues, bot-lane summoner timers, vision/jg timing helps
+            - Feedback welcome — expect rough edges
+
+            Previous `1.x` numbering is retired; this beta line starts at `1.0.0-beta.1`.
           generateReleaseNotes: true

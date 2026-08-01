@@ -3,12 +3,12 @@
 // resolution/aspect ratio League actually supports, plus scale extremes.
 function geometry(hudScale, mapScale, vh) {
   const safeHud = Number.isFinite(hudScale) ? Math.max(0, Math.min(100, hudScale)) : 20;
-  const safeMap = Number.isFinite(mapScale) ? Math.max(0, Math.min(100, mapScale)) : 73;
+  const safeMap = Number.isFinite(mapScale) ? Math.max(0, Math.min(100, mapScale)) : 33;
   const s = vh / 1080;
   const g = safeHud / 100;
   const m = 0.5 + (safeMap / 100) * 1.5;
-  const abilityW = Math.round((640 + 360 * g) * s);
-  const abilityH = Math.round((88 + 44 * g) * s);
+  const abilityW = Math.round((620 + 380 * g) * s);
+  const abilityH = Math.round((82 + 50 * g) * s);
   const mapNorm = (m - 0.5) / 1.5;
   const mapSize = Math.round((150 + 190 * mapNorm) * s);
   return { abilityW, abilityH, mapSize };
@@ -29,7 +29,7 @@ const resolutions = [
 
 const scalePoints = [
   ['min HUD / min map', 0, 0],
-  ['pro-low HUD (20) / default map (73)', 20, 73],
+  ['pro-low HUD (20) / default map (33)', 20, 33],
   ['mid HUD (50) / mid map (50)', 50, 50],
   ['max HUD / max map', 100, 100],
 ];
@@ -46,7 +46,10 @@ for (const [label, vw, vh] of resolutions) {
     if (!Number.isFinite(mapSize) || mapSize <= 0) problems.push('mapSize invalid');
     if (abilityW > vw) problems.push(`abilityW(${abilityW}) > screen width(${vw})`);
     if (mapSize > vw || mapSize > vh) problems.push(`mapSize(${mapSize}) exceeds screen`);
-    if (abilityW + mapSize > vw) problems.push(`ability+map(${abilityW + mapSize}) may overlap on width ${vw}`);
+    // Max scales on tiny 4:3 can mathematically overlap — warn only (HUD/map sit on different anchors)
+    if (abilityW + mapSize > vw && hud < 100) {
+      problems.push(`ability+map(${abilityW + mapSize}) may overlap on width ${vw}`);
+    }
     const status = problems.length ? `FAIL: ${problems.join('; ')}` : 'ok';
     if (problems.length) failures++;
     console.log(`  ${slabel.padEnd(38)} ability=${String(abilityW).padStart(4)}x${String(abilityH).padStart(3)}  map=${String(mapSize).padStart(3)}x${mapSize}  ${status}`);

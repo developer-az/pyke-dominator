@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { OverlayBotSummoner } from '../overlay/overlayLogic';
 import { formatCd } from '../logic/summonerSpells';
 import { HudFrame } from './HudFrame';
@@ -11,8 +11,34 @@ interface Props {
   compact?: boolean;
 }
 
+function formatAdcClipboard(lanes: OverlayBotSummoner[]): string | null {
+  const adc = lanes.find((l) => l.role === 'Bot');
+  if (!adc) return null;
+  const bits = adc.spells.map((s) =>
+    s.ready || s.remaining <= 0 ? `${s.short} UP` : `${s.short} ${formatCd(s.remaining)}`
+  );
+  return `ADC ${adc.championName}: ${bits.join(' · ')}`;
+}
+
 export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact }) => {
+  const [copied, setCopied] = useState(false);
   if (!lanes.length) return null;
+
+  const handleCopyAdc = async () => {
+    const text = formatAdcClipboard(lanes);
+    if (!text) return;
+    try {
+      if (window.electronAPI?.clipboardWrite) {
+        await window.electronAPI.clipboardWrite(text);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
 
   const body = (
     <div className={compact ? 'space-y-1.5' : 'space-y-3'}>
@@ -48,11 +74,21 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
           </div>
         </div>
       ))}
-      {!compact && (
-        <p className="text-[9px] font-mono text-chrome-dim/70 tracking-wide">
-          Flash/Heal/Barrier start on death · Ignite on their kill (Live Client heuristic).
-        </p>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handleCopyAdc()}
+          className={`hud-chip !py-0.5 ${compact ? '!text-[9px]' : '!text-[10px]'} cursor-pointer hover:opacity-100`}
+          title="Copy ADC summoner timers to clipboard"
+        >
+          {copied ? 'Copied ADC sums' : 'Copy ADC sums'}
+        </button>
+        {!compact && (
+          <p className="text-[9px] font-mono text-chrome-dim/70 tracking-wide">
+            Flash/Heal/Barrier on death · Ignite/Exhaust on kill/assist · ADC ups auto-copy to clipboard
+          </p>
+        )}
+      </div>
     </div>
   );
 

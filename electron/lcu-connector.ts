@@ -1,4 +1,5 @@
 import { exec } from 'child_process';
+import { randomUUID } from 'crypto';
 import axios from 'axios';
 import https from 'https';
 
@@ -18,7 +19,7 @@ export const connectToLCU = (): Promise<{ port: string; token: string; protocol:
         exec(command, (error, stdout) => {
             if (error || !stdout || !stdout.trim()) {
                 console.log('LCU not found or error:', error);
-                reject(new Error('League Client not found'));
+                reject(new Error('League Client not found — open the League client and try again'));
                 return;
             }
 
@@ -39,6 +40,20 @@ export const connectToLCU = (): Promise<{ port: string; token: string; protocol:
     });
 };
 
+/** Refresh credentials before write ops — tokens rotate when the client restarts. */
+export const ensureLCUConnected = async (): Promise<void> => {
+    try {
+        if (credentials) {
+            // Cheap health check; 401/connection errors force reconnect
+            await makeLCURequest('GET', '/lol-summoner/v1/current-summoner', undefined, 2500);
+            return;
+        }
+    } catch {
+        credentials = null;
+    }
+    await connectToLCU();
+};
+
 interface LCURunePage {
     name: string;
     id: number;
@@ -57,7 +72,7 @@ export interface ExportRunePagePayload {
 }
 
 export const exportRunePage = async (runePage: ExportRunePagePayload): Promise<void> => {
-    if (!credentials) throw new Error('LCU not connected');
+    await ensureLCUConnected();
 
     if (!Array.isArray(runePage.selectedPerkIds) || runePage.selectedPerkIds.length !== 9) {
         throw new Error(`Invalid rune page: expected 9 perk IDs, got ${runePage.selectedPerkIds?.length ?? 0}`);
@@ -123,18 +138,18 @@ export interface ExportBuildPayload {
  * Export item set via the real LCU collection API:
  * GET/PUT `/lol-item-sets/v1/item-sets/{summonerId}/sets`
  *
- * The previous implementation POSTed a bare set to a non-collection path and
- * treated the GET response as an array — both are wrong for current clients.
+ * LCU requires each page to have a valid UUID `uid` — missing uid is the most
+ * common silent PUT rejection.
  */
 export const exportItemSet = async (build: ExportBuildPayload): Promise<void> => {
-    if (!credentials) throw new Error('LCU not connected');
+    await ensureLCUConnected();
 
     const currentSummoner = await makeLCURequest('GET', '/lol-summoner/v1/current-summoner') as {
         summonerId?: number;
         accountId?: number;
     } | null;
     if (!currentSummoner?.summonerId) {
-        throw new Error('Could not get summoner ID from LCU');
+        throw new Error('Could not get summoner ID from LCU — finish logging into League first');
     }
 
     const summonerId = currentSummoner.summonerId;
@@ -143,11 +158,18 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
 
     const existing = await makeLCURequest(
         'GET',
-        `/lol-item-sets/v1/item-sets/${summonerId}/sets`
+        `/lol-item-sets/v1/item-sets/${summonerId}/sets`,
+        undefined,
+        8000
     ) as LCUItemSetsCollection | null;
 
     const existingSets = Array.isArray(existing?.itemSets) ? existing!.itemSets! : [];
-    const kept = existingSets.filter((s) => s.title !== setTitle && s.title !== 'Pyke Dominator' && s.title !== 'Yone Mid Dominator');
+    const prior =
+        existingSets.find((s) => s.title === setTitle) ||
+        existingSets.find((s) => s.title === 'Pyke Dominator' || s.title === 'Yone Mid Dominator');
+    const kept = existingSets.filter(
+        (s) => s.title !== setTitle && s.title !== 'Pyke Dominator' && s.title !== 'Yone Mid Dominator'
+    );
 
     const blocks: ItemSetBlock[] = [];
     if (build.starter.length > 0) {
@@ -181,7 +203,9 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
         });
     }
 
+    // uid is required by LCU item-set validation — reuse prior uid on update
     const newSet: LCUItemSetPage = {
+        uid: typeof prior?.uid === 'string' && prior.uid.length > 0 ? prior.uid : randomUUID(),
         title: setTitle,
         type: 'custom',
         map: 'any',
@@ -195,16 +219,42 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
         blocks,
     };
 
+    const accountId =
+        (typeof existing?.accountId === 'number' && existing.accountId > 0
+            ? existing.accountId
+            : null) ??
+        (typeof currentSummoner.accountId === 'number' ? currentSummoner.accountId : 0);
+
     const payload: LCUItemSetsCollection = {
-        accountId: existing?.accountId ?? currentSummoner.accountId ?? 0,
+        accountId,
         itemSets: [...kept, newSet],
         timestamp: Date.now(),
     };
 
-    await makeLCURequest('PUT', `/lol-item-sets/v1/item-sets/${summonerId}/sets`, payload);
+    try {
+        await makeLCURequest('PUT', `/lol-item-sets/v1/item-sets/${summonerId}/sets`, payload, 10000);
+    } catch (putErr: unknown) {
+        // Fallback: some clients accept POST to append a single page
+        try {
+            await makeLCURequest(
+                'POST',
+                `/lol-item-sets/v1/item-sets/${summonerId}/sets`,
+                newSet,
+                10000
+            );
+        } catch {
+            const msg = putErr instanceof Error ? putErr.message : String(putErr);
+            throw new Error(`Item set export failed: ${msg}`);
+        }
+    }
 };
 
-export const makeLCURequest = async (method: string, endpoint: string, body?: unknown) => {
+export const makeLCURequest = async (
+    method: string,
+    endpoint: string,
+    body?: unknown,
+    timeoutMs = 4000
+) => {
     if (!credentials) {
         throw new Error('Not connected to LCU');
     }
@@ -222,7 +272,7 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: un
             },
             data: body,
             httpsAgent: lcuHttpsAgent,
-            timeout: 4000,
+            timeout: timeoutMs,
             validateStatus: (status) => {
                 // Don't throw on 404 - it's expected when not in champ select
                 return status < 500;
@@ -231,6 +281,11 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: un
 
         if (response.status === 404) {
             return null;
+        }
+
+        if (response.status === 401 || response.status === 403) {
+            credentials = null;
+            throw new Error(`LCU auth expired (${response.status}) — reconnect and retry`);
         }
 
         if (response.status >= 400) {
@@ -242,7 +297,11 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: un
 
         return response.data;
     } catch (error: unknown) {
-        const axiosError = error as { response?: { status?: number; data?: unknown }; message?: string };
+        const axiosError = error as { response?: { status?: number; data?: unknown }; message?: string; code?: string };
+        if (axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ETIMEDOUT') {
+            credentials = null;
+            throw new Error('League Client not reachable — is it open?');
+        }
         if (axiosError.response?.status !== 404) {
             console.error('LCU Request Error:', axiosError.message || 'Unknown error');
         }

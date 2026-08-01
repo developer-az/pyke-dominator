@@ -1,8 +1,8 @@
 {
   "name": "pyke-dominator",
   "private": true,
-  "version": "1.4.0",
-  "description": "Dominator — League companion with champion profiles (Pyke Support, Yone Mid), LCU export, and in-game overlay",
+  "version": "1.0.0-beta.1",
+  "description": "Dominator — first public beta. League companion with Pyke Support / Yone Mid profiles, LCU export, and in-game overlay",
   "author": "Az040",
   "repository": {
     "type": "git",

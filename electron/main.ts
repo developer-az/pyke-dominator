@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, clipboard } from 'electron';
 import path from 'path';
 import { connectToLCU, makeLCURequest } from './lcu-connector';
 import { fetchLiveClientData } from './live-client';
@@ -22,8 +22,10 @@ import {
     getCalibration,
     adjustCalibration,
     resetCalibration,
+    getGameResolution,
     type FrameCalibration,
 } from './overlay-window';
+import { formatAdcClipboard } from './summoner-tracker';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public');
@@ -212,6 +214,18 @@ app.whenReady().then(() => {
         }
     });
 
+    ipcMain.handle('clipboard-write', async (_event, text: string) => {
+        try {
+            const value = typeof text === 'string' && text.trim() ? text : formatAdcClipboard();
+            if (!value) return { success: false, error: 'Nothing to copy' };
+            clipboard.writeText(value);
+            return { success: true };
+        } catch (error: unknown) {
+            const err = error as { message?: string };
+            return { success: false, error: err.message || 'Clipboard failed' };
+        }
+    });
+
     // Live Client Data (in-game, including Practice Tool)
     ipcMain.handle('live-client-data', async () => {
         try {
@@ -297,6 +311,7 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('overlay-get-status', () => {
+        const res = getGameResolution();
         return {
             success: true,
             visible: !isOverlayUserHidden(),
@@ -306,6 +321,8 @@ app.whenReady().then(() => {
             mapScale: getMapScale(),
             chromeColor: getChromeColor(),
             calibration: getCalibration(),
+            gameWidth: res.gameWidth,
+            gameHeight: res.gameHeight,
         };
     });
 

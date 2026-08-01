@@ -52,9 +52,11 @@ export const OverlayApp: React.FC = () => {
   const [champions, setChampions] = useState<Champion[]>([]);
   const [clickThrough, setClickThrough] = useState(true);
   const [hudScale, setHudScale] = useState(20);
-  const [mapScale, setMapScale] = useState(88);
+  const [mapScale, setMapScale] = useState(33);
   const [chromeColor, setChromeColor] = useState('#d4d8de');
   const [collapsed, setCollapsed] = useState(false);
+  const [gameWidth, setGameWidth] = useState(1920);
+  const [gameHeight, setGameHeight] = useState(1080);
   const [calibration, setCalibration] = useState<OverlayCalibration>({ ability: emptyCalibration(), minimap: emptyCalibration() });
   const [profileId, setProfileId] = useState<ProfileId>(() =>
     typeof window !== 'undefined' ? loadStoredProfileId() : 'pyke-support'
@@ -113,6 +115,8 @@ export const OverlayApp: React.FC = () => {
         mapScale?: number;
         chromeColor?: string;
         calibration?: OverlayCalibration;
+        gameWidth?: number;
+        gameHeight?: number;
       };
       if (typeof meta.clickThrough === 'boolean') {
         setClickThrough(meta.clickThrough);
@@ -126,6 +130,8 @@ export const OverlayApp: React.FC = () => {
       if (typeof meta.chromeColor === 'string') {
         setChromeColor(meta.chromeColor);
       }
+      if (typeof meta.gameWidth === 'number') setGameWidth(meta.gameWidth);
+      if (typeof meta.gameHeight === 'number') setGameHeight(meta.gameHeight);
       if (meta.calibration) {
         setCalibration(meta.calibration);
       }
@@ -144,6 +150,8 @@ export const OverlayApp: React.FC = () => {
       if (res?.success && typeof res.chromeColor === 'string') {
         setChromeColor(res.chromeColor);
       }
+      if (res?.success && typeof res.gameWidth === 'number') setGameWidth(res.gameWidth);
+      if (res?.success && typeof res.gameHeight === 'number') setGameHeight(res.gameHeight);
       if (res?.success && res.calibration) {
         setCalibration(res.calibration);
       }
@@ -303,14 +311,17 @@ export const OverlayApp: React.FC = () => {
       {/* Alignment corner-marks stay on while in-game — lightweight, static, no blur/animation */}
       <ChromeGameHud
         hudScale={Number.isFinite(hudScale) ? hudScale : 20}
-        mapScale={Number.isFinite(mapScale) ? mapScale : 88}
+        mapScale={Number.isFinite(mapScale) ? mapScale : 33}
         enabled
         chromeColor={chromeColor}
         calibration={calibration}
+        showGuides={!clickThrough}
+        gameWidth={gameWidth}
+        gameHeight={gameHeight}
       />
 
       {!clickThrough && (
-      <div className="hud-overlay-controls absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto">
+      <div className="hud-overlay-controls absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto z-10">
         <ChromeMark className="hud-chrome-mark" size={11} />
         <button
           type="button"
@@ -326,15 +337,23 @@ export const OverlayApp: React.FC = () => {
           className="hud-btn"
           title="Lock overlay and pass clicks to League (Ctrl+Shift+U)"
         >
-          Lock overlay
+          Lock · done aligning
         </button>
         <NudgeGroup label="Ability" onNudge={(field, delta) => nudge('ability', field, delta)} />
         <NudgeGroup label="Map" onNudge={(field, delta) => nudge('minimap', field, delta)} />
         <button type="button" onClick={handleResetCalibration} className="hud-nudge-btn" title="Reset alignment marks to default">
           Reset fit
         </button>
+        <button
+          type="button"
+          className="hud-btn"
+          title="Re-read HUD/Minimap scales from League game.cfg"
+          onClick={() => void window.electronAPI?.syncLeagueScales?.()}
+        >
+          Sync LoL
+        </button>
         <span className="px-1 text-[8px] tracking-wider opacity-50">
-          ⌃⇧H / U
+          Fullscreen align · match filled boxes to HUD/map
         </span>
       </div>
       )}

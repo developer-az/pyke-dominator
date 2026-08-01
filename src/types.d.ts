@@ -33,6 +33,7 @@ declare global {
                 selectedPerkIds: number[];
                 current?: boolean;
             }) => Promise<{ success: boolean; error?: string }>;
+            clipboardWrite: (text: string) => Promise<{ success: boolean; error?: string }>;
             onUpdate: (callback: (value: unknown) => void) => void;
             windowMinimize: () => Promise<void>;
             windowMaximize: () => Promise<void>;
@@ -48,7 +49,18 @@ declare global {
             syncLeagueScales: () => Promise<{ success: boolean; hudScale: number; mapScale: number; source?: string }>;
             adjustOverlayCalibration: (target: 'ability' | 'minimap', field: 'dx' | 'dy' | 'dw' | 'dh', delta: number) => Promise<{ success: boolean; calibration: OverlayCalibration }>;
             resetOverlayCalibration: () => Promise<{ success: boolean; calibration: OverlayCalibration }>;
-            getOverlayStatus: () => Promise<{ success: boolean; visible: boolean; clickThrough: boolean; inGame: boolean; hudScale: number; mapScale?: number; chromeColor?: string; calibration?: OverlayCalibration }>;
+            getOverlayStatus: () => Promise<{
+                success: boolean;
+                visible: boolean;
+                clickThrough: boolean;
+                inGame: boolean;
+                hudScale: number;
+                mapScale?: number;
+                chromeColor?: string;
+                calibration?: OverlayCalibration;
+                gameWidth?: number;
+                gameHeight?: number;
+            }>;
             onOverlayUpdate: (callback: (payload: unknown) => void) => (() => void) | void;
             onOverlayMeta: (callback: (payload: unknown) => void) => (() => void) | void;
             onOverlayVisibilityChanged: (callback: (payload: { visible: boolean }) => void) => (() => void) | void;

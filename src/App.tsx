@@ -42,7 +42,7 @@ const App: React.FC = () => {
   const wasInGameRef = React.useRef(false);
   const [overlayClickThrough, setOverlayClickThrough] = useState(true);
   const [hudScale, setHudScale] = useState(20);
-  const [mapScale, setMapScale] = useState(88);
+  const [mapScale, setMapScale] = useState(33);
   const [chromeColor, setChromeColor] = useState('#d4d8de');
   const [profileId, setProfileId] = useState<ProfileId>(() =>
     typeof window !== 'undefined' ? loadStoredProfileId() : 'pyke-support'
@@ -784,8 +784,7 @@ const App: React.FC = () => {
           )}
           {window.electronAPI && (
             <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-chrome-dim/70">
-              Tip: set League's Video &gt; Display Mode to <strong className="text-chrome-dim">Borderless</strong> — overlays over exclusive Fullscreen force Windows to recompose every frame and can cost real FPS.
-              Unlock the overlay (Ctrl+Shift+U) to drag it, and nudge the ability/minimap alignment marks to fit your exact HUD.
+              Tip: set League to <strong className="text-chrome-dim">Borderless</strong>. Hit <strong className="text-chrome-dim">Sync LoL</strong>, then unlock overlay (Ctrl+Shift+U) — fullscreen filled guides appear over your real HUD/minimap so you can nudge until they match.
             </p>
           )}
         </header>

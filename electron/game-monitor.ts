@@ -17,7 +17,9 @@ import {
     resetSummonerTracker,
     serializeSummoners,
     summonerFingerprint,
+    consumeSummonerClipboard,
 } from './summoner-tracker';
+import { clipboard } from 'electron';
 
 /** Gameflow phases where an active match (including Practice Tool) is running. */
 const IN_GAME_PHASES = new Set(['InProgress', 'GameStart']);
@@ -152,9 +154,25 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
     for (const p of live?.allPlayers || []) {
         if (p.summonerName) nameToChampion.set(p.summonerName, p.championName);
         if (p.riotIdGameName) nameToChampion.set(p.riotIdGameName, p.championName);
-        if (p.riotId) nameToChampion.set(p.riotId, p.championName);
+        if (p.riotId) {
+            nameToChampion.set(p.riotId, p.championName);
+            const base = p.riotId.split('#')[0];
+            if (base) nameToChampion.set(base, p.championName);
+        }
+        // Events sometimes use champion display names directly
+        if (p.championName) nameToChampion.set(p.championName, p.championName);
     }
     ingestLiveEvents(live?.events?.Events, nameToChampion);
+
+    // Auto-copy ADC Flash/Heal/Barrier when they come back up
+    const clip = consumeSummonerClipboard();
+    if (clip) {
+        try {
+            clipboard.writeText(clip);
+        } catch {
+            // ignore clipboard failures
+        }
+    }
 
     const allies = live?.allPlayers
         ?.filter((p) => localPlayer && p.team === localPlayer.team && p.summonerName !== localPlayer.summonerName)

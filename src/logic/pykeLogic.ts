@@ -885,7 +885,16 @@ export const analyzeMatchup = (
     const ccHeavy: string[] = [];
     const pokeHeavy: string[] = [];
 
+    // Attach enchanters aren't prey themselves — you R the host. Yuumi only
+    // matters as a soft target if she's forced off a squishy (rare); otherwise
+    // exclude her so prey chips point at real kill angles.
+    const ATTACH_ENCHANTERS = new Set(['Yuumi']);
+
     enemyTeam.forEach((c) => {
+        if (ATTACH_ENCHANTERS.has(c.id) || ATTACH_ENCHANTERS.has(c.name)) {
+            // Prefer the squishy she's likely attached to (ADC / soft mid)
+            return;
+        }
         if (c.tags.includes('Marksman') || c.tags.includes('Mage') || c.tags.includes('Assassin')) {
             if (!c.tags.includes('Tank') && !c.tags.includes('Fighter')) squishies.push(c.name);
         }
@@ -893,6 +902,13 @@ export const analyzeMatchup = (
         if (c.tags.includes('Support') && (c.tags.includes('Tank') || c.tags.includes('Mage'))) ccHeavy.push(c.name);
         if (c.tags.includes('Mage') && c.tags.includes('Support')) pokeHeavy.push(c.name);
     });
+
+    // If Yuumi is in and we still have no prey, only then consider her when
+    // her likely host is already a squishy (she's peel, not the execute).
+    const hasYuumi = enemyTeam.some((c) => c.id === 'Yuumi' || c.name === 'Yuumi');
+    if (hasYuumi && squishies.length === 0) {
+        // No other soft targets — don't invent Yuumi as prey; look at supports with HP
+    }
 
     const pykeDamage = calculatePykeDamage(6, true, 0);
     const botLaneMatchup = analyzeBotLaneMatchup(enemyTeam, yourADC || null, pykeDamage);

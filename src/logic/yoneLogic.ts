@@ -275,6 +275,7 @@ export function analyzeYoneMatchup(enemyTeam: Champion[], build?: Build): Matchu
     winCondition: 'Reach BotRK/Shieldbow + boots, then side-lane duel and E-R pick angles.',
     aggressionLevel: 'MODERATE',
     primaryTargets: enemyTeam
+      .filter((c) => c.id !== 'Yuumi' && c.name !== 'Yuumi')
       .filter((c) => c.tags.includes('Marksman') || c.tags.includes('Mage') || c.tags.includes('Assassin'))
       .filter((c) => !c.tags.includes('Tank'))
       .map((c) => c.name)

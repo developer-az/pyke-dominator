@@ -35,8 +35,11 @@ function setOverlayThrottling(enabled: boolean): void {
 let clickThrough = true;
 let userHidden = false;
 let hudScale = 20;
-let mapScale = 88;
+/** Default ~MinimapScale 1.0 (was 88 ≈ 1.82 — caused huge map frame vs HUD). */
+let mapScale = 33;
 let chromeColor = '#d4d8de';
+let gameWidth = 1920;
+let gameHeight = 1080;
 let calibration: OverlayCalibration = { ...DEFAULT_CALIBRATION, ability: { ...DEFAULT_CALIBRATION.ability }, minimap: { ...DEFAULT_CALIBRATION.minimap } };
 
 function normalizeChromeColor(value: unknown): string | null {
@@ -52,9 +55,6 @@ function normalizeFrameCalibration(value: unknown): FrameCalibration | null {
     return { dx: nums[0], dy: nums[1], dw: nums[2], dh: nums[3] };
 }
 let interactiveBounds: Electron.Rectangle | null = null;
-
-const INTERACTIVE_WIDTH = 360;
-const INTERACTIVE_HEIGHT = 760;
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
@@ -86,6 +86,8 @@ function loadSettings(): void {
     if (league) {
         hudScale = league.hudScale;
         mapScale = league.mapScale;
+        gameWidth = league.width;
+        gameHeight = league.height;
     }
 
     try {
@@ -140,11 +142,19 @@ function saveSettings(): void {
 }
 
 /** Re-read League game.cfg and push scales to overlay + callers. */
-export function syncScalesFromLeague(): { hudScale: number; mapScale: number; source?: string } {
+export function syncScalesFromLeague(): {
+    hudScale: number;
+    mapScale: number;
+    source?: string;
+    gameWidth?: number;
+    gameHeight?: number;
+} {
     const league = readLeagueHudScales();
     if (league) {
         hudScale = league.hudScale;
         mapScale = league.mapScale;
+        gameWidth = league.width;
+        gameHeight = league.height;
         try {
             // Must include calibration/etc — this used to omit them and silently
             // wipe the user's saved nudge positions from disk on every game start.
@@ -157,9 +167,15 @@ export function syncScalesFromLeague(): { hudScale: number; mapScale: number; so
             // ignore
         }
         broadcastOverlayMeta();
-        return { hudScale, mapScale, source: league.source };
+        return {
+            hudScale,
+            mapScale,
+            source: league.source,
+            gameWidth,
+            gameHeight,
+        };
     }
-    return { hudScale, mapScale };
+    return { hudScale, mapScale, gameWidth, gameHeight };
 }
 
 function assertAlwaysOnTop(win: BrowserWindow): void {
@@ -296,40 +312,22 @@ export function setOverlayUserHidden(hidden: boolean): void {
 }
 
 export function setClickThrough(enabled: boolean): void {
-    const wasClickThrough = clickThrough;
     clickThrough = enabled;
     if (!overlayWin || overlayWin.isDestroyed()) return;
 
+    // Always stay fullscreen over the game display. Shrinking to a 360×760
+    // panel made HUD/minimap frames meaningless for alignment (they measured
+    // against the tiny window, not League's HUD). Unlock = align mode with
+    // mouse events on so nudge controls work; Lock = click-through again.
+    const display = screen.getDisplayMatching(overlayWin.getBounds()) || screen.getPrimaryDisplay();
+    overlayWin.setBounds(display.bounds);
+    overlayWin.setMovable(false);
+
     if (enabled) {
-        // Store the compact panel position before restoring the full-screen
-        // click-through surface. A full-screen non-ignoring transparent window
-        // blocks every click beneath it on Windows.
-        if (!wasClickThrough) {
-            interactiveBounds = overlayWin.getBounds();
-            saveSettings();
-        }
-        const display = screen.getDisplayMatching(overlayWin.getBounds());
-        overlayWin.setBounds(display.bounds);
-        overlayWin.setMovable(false);
         overlayWin.setFocusable(false);
         overlayWin.setIgnoreMouseEvents(true, { forward: true });
     } else {
-        const display = screen.getPrimaryDisplay();
-        const fallbackBounds: Electron.Rectangle = {
-            x: display.workArea.x + display.workArea.width - INTERACTIVE_WIDTH - 16,
-            y: display.workArea.y + 48,
-            width: INTERACTIVE_WIDTH,
-            height: INTERACTIVE_HEIGHT,
-        };
-        const targetBounds = interactiveBounds || fallbackBounds;
-        overlayWin.setBounds({
-            x: targetBounds.x,
-            y: targetBounds.y,
-            width: INTERACTIVE_WIDTH,
-            height: INTERACTIVE_HEIGHT,
-        });
         overlayWin.setFocusable(true);
-        overlayWin.setMovable(true);
         overlayWin.setIgnoreMouseEvents(false);
         overlayWin.show();
         overlayWin.focus();
@@ -414,6 +412,10 @@ export function setChromeColor(color: string): string {
     return chromeColor;
 }
 
+export function getGameResolution(): { gameWidth: number; gameHeight: number } {
+    return { gameWidth, gameHeight };
+}
+
 export function broadcastOverlayMeta(): void {
     if (!overlayWin || overlayWin.isDestroyed()) return;
     overlayWin.webContents.send('overlay-meta', {
@@ -424,6 +426,9 @@ export function broadcastOverlayMeta(): void {
         mapScale,
         chromeColor,
         calibration,
+        gameWidth,
+        gameHeight,
+        alignMode: !clickThrough,
     });
 }
 
