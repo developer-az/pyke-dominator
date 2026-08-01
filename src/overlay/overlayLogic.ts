@@ -154,6 +154,17 @@ function buildYoneCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
     inventoryHasName(state.localPlayer?.items, ['berserker', 'greaves']);
   const lowAggro = analysis?.aggressionLevel === 'LOW';
 
+  // Ally jungler sync (Yone is mid — partner lane is jg, not another mid)
+  const jgTip = analysis?.roamAdvice || analysis?.tips?.find((t) => /jungl|gank|path|dive|clear/i.test(t));
+  if (jgTip && minutes >= 2 && minutes <= 6 && level < 9) {
+    cues.push({
+      id: 'yone-jg-sync',
+      label: 'Jg sync',
+      detail: jgTip.slice(0, 140),
+      urgency: lowAggro ? 'spike' : 'warn',
+    });
+  }
+
   if (level <= 2) {
     cues.push({
       id: 'yone-early',
@@ -474,7 +485,7 @@ export function resolveAllyAdcName(
   return null;
 }
 
-/** Resolve allied mid from live client allies. */
+/** Resolve allied mid from live client allies (Pyke support partner). */
 export function resolveAllyMidName(
   allies: OverlayState['allies'],
   champions: Array<{ name: string; id: string; tags: string[] }>
@@ -493,5 +504,36 @@ export function resolveAllyMidName(
       return ally.championName;
     }
   }
+  return null;
+}
+
+/** Resolve allied jungler (Yone mid partner — Yone is already mid). */
+export function resolveAllyJungleName(
+  allies: OverlayState['allies'],
+  champions: Array<{ name: string; id: string; tags: string[] }>
+): string | null {
+  if (!allies?.length) return null;
+  const jg = allies.find((a) => {
+    const p = (a.position || '').toUpperCase();
+    return p === 'JUNGLE' || p === 'JNG';
+  });
+  if (jg) return jg.championName;
+
+  // Smite isn't on ally payload here — fall back to common jg tags if unique
+  const jgTagged = allies.filter((ally) => {
+    const champ = champions.find(
+      (c) =>
+        c.name.toLowerCase() === ally.championName.toLowerCase() ||
+        c.id.toLowerCase() === ally.championName.toLowerCase()
+    );
+    if (!champ) return false;
+    // Classic jg: Fighter/Tank without Marksman/Support primary
+    return (
+      (champ.tags.includes('Fighter') || champ.tags.includes('Tank')) &&
+      !champ.tags.includes('Marksman') &&
+      !champ.tags.includes('Support')
+    );
+  });
+  if (jgTagged.length === 1) return jgTagged[0].championName;
   return null;
 }

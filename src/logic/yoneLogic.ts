@@ -41,6 +41,51 @@ const EASY_IMMOBILE = [
 ];
 const MOBILE_ASSASSIN = ['Zed', 'Akali', 'LeBlanc', 'Fizz', 'Qiyana', 'Talon', 'Katarina', 'Ekko'];
 
+/** Ally junglers who look for early mid ganks / dives. */
+const EARLY_GANK_JG = [
+  'LeeSin', 'XinZhao', 'Elise', 'RekSai', 'JarvanIV', 'Pantheon', 'Nidalee', 'Graves', 'Kindred',
+  'Vi', 'Warwick', 'Rengar', 'Ekko', 'Shaco', 'Evelynn', 'Talon', 'Qiyana', 'Diana', 'Nocturne',
+];
+/** Ally junglers who full-clear / scale — don't expect early mid presence. */
+const FARM_JG = [
+  'MasterYi', 'Kayn', 'Karthus', 'Belveth', 'Lillia', 'Amumu', 'Fiddlesticks', 'Ivern', 'Skarner',
+  'Udyr', 'Volibear', 'Briar', 'Viego', 'Shyvana', 'Mordekaiser',
+];
+/** Ally junglers with hard CC / engage that Yone chains after. */
+const SETUP_JG = [
+  'JarvanIV', 'Sejuani', 'Amumu', 'Nunu', 'Zac', 'Maokai', 'Wukong', 'Vi', 'Rell', 'Skarner',
+  'RekSai', 'XinZhao', 'Poppy', 'Gragas', 'Hecarim',
+];
+
+type AllyJgStyle = 'early' | 'farm' | 'setup' | 'standard';
+
+interface AllyJungleIntel {
+  champ: Champion;
+  style: AllyJgStyle;
+  notes: string[];
+}
+
+function classifyAllyJungle(ally: Champion | null | undefined): AllyJungleIntel | null {
+  if (!ally) return null;
+  const id = ally.id;
+  let style: AllyJgStyle = 'standard';
+  if (EARLY_GANK_JG.includes(id)) style = 'early';
+  else if (SETUP_JG.includes(id)) style = 'setup';
+  else if (FARM_JG.includes(id)) style = 'farm';
+
+  const notes: string[] = [];
+  if (style === 'early') {
+    notes.push(`${ally.name} paths for early mid — freeze/thin and play for their first look.`);
+  } else if (style === 'setup') {
+    notes.push(`${ally.name} locks targets — stack Q3 before their engage, then E-R.`);
+  } else if (style === 'farm') {
+    notes.push(`${ally.name} full-clears — expect solo lane until ~5–6; don't force dives.`);
+  } else {
+    notes.push(`Track ${ally.name}'s camps — sync trades when they show mid river.`);
+  }
+  return { champ: ally, style, notes };
+}
+
 interface MidCtx {
   poke: number;
   cc: number;
@@ -52,6 +97,7 @@ interface MidCtx {
   assassin: boolean;
   enemyMid: Champion | null;
   enemyNames: string[];
+  allyJungle: AllyJungleIntel | null;
 }
 
 function findEnemyMid(enemyTeam: Champion[]): Champion | null {
@@ -67,7 +113,7 @@ function findEnemyMid(enemyTeam: Champion[]): Champion | null {
   );
 }
 
-function scanMid(enemyTeam: Champion[]): MidCtx {
+function scanMid(enemyTeam: Champion[], allyJungle?: Champion | null): MidCtx {
   const enemyMid = findEnemyMid(enemyTeam);
   let poke = 0;
   let cc = 0;
@@ -95,25 +141,30 @@ function scanMid(enemyTeam: Champion[]): MidCtx {
     assassin: MOBILE_ASSASSIN.includes(midId),
     enemyMid,
     enemyNames: enemyTeam.map((c) => c.name),
+    allyJungle: classifyAllyJungle(allyJungle),
   };
 }
 
-export function calculateYoneBuild(enemyTeam: Champion[]): Build {
-  const ctx = scanMid(enemyTeam);
+export function calculateYoneBuild(enemyTeam: Champion[], allyJungle?: Champion | null): Build {
+  const ctx = scanMid(enemyTeam, allyJungle);
   const starter: Item[] = ctx.poke >= 2 || (ctx.enemyMid && HARD_RANGE_POKE.includes(ctx.enemyMid.id))
     ? [ITEMS.DORANS_SHIELD, ITEMS.POTION, ITEMS.POTION]
     : [ITEMS.DORANS_BLADE, ITEMS.POTION, ITEMS.POTION];
 
+  // Ally jungler with heavy CC → slightly favor Mercs so skirmish chains complete
+  const allySetup = ctx.allyJungle?.style === 'setup' || ctx.allyJungle?.style === 'early';
   const bootScores = [
     {
       item: ITEMS.BERSERKERS,
-      score: 50 + (ctx.immobile ? 8 : 0) - (ctx.cc >= 3 ? 10 : 0),
+      score: 50 + (ctx.immobile ? 8 : 0) - (ctx.cc >= 3 ? 10 : 0) - (allySetup && ctx.cc >= 2 ? 4 : 0),
       reason: "Berserker's = Q CD. Default first spike before legendaries.",
     },
     {
       item: ITEMS.MERCURY,
-      score: ctx.cc * 14 + (ctx.assassin ? 6 : 0),
-      reason: 'Tenacity so R/Q3 chains are not cancelled.',
+      score: ctx.cc * 14 + (ctx.assassin ? 6 : 0) + (allySetup && ctx.cc >= 2 ? 8 : 0),
+      reason: allySetup
+        ? 'Tenacity for jg skirmishes — finish R/Q3 when your jungler engages.'
+        : 'Tenacity so R/Q3 chains are not cancelled.',
     },
     {
       item: ITEMS.STEELCAPS,
@@ -208,8 +259,11 @@ export function calculateYoneBuild(enemyTeam: Champion[]): Build {
   };
 }
 
-export function calculateYoneRunes(enemyTeam: Champion[], _build?: Build): RunePage {
-  const ctx = scanMid(enemyTeam);
+export function calculateYoneRunes(
+  enemyTeam: Champion[],
+  allyJungle?: Champion | null
+): RunePage {
+  const ctx = scanMid(enemyTeam, allyJungle);
   const reasons: { [key: number]: string } = {};
 
   // Fleet only vs real poke bullies (Skill-Capped); Lethal Tempo otherwise — including immobile mages
@@ -228,15 +282,23 @@ export function calculateYoneRunes(enemyTeam: Champion[], _build?: Build): RuneP
   reasons[8299] = 'Last Stand: win the low-HP E all-in.';
 
   // Resolve secondary: Second Wind + Overgrowth default; Bone Plating vs burst/assassin
+  // Early-gank ally jg → Unflinching helps live the 2v2 / dive CC chain
   let sec1 = 8444;
   let sec2 = 8451;
   reasons[8444] = 'Second Wind: refill after poke — stay in lethal range.';
   reasons[8451] = 'Overgrowth: free HP for late skirmishes.';
-  if (ctx.assassin || (ctx.enemyMid && HARD_MELEE_BULLY.includes(ctx.enemyMid.id))) {
+  if (
+    ctx.assassin ||
+    (ctx.enemyMid && HARD_MELEE_BULLY.includes(ctx.enemyMid.id)) ||
+    ctx.allyJungle?.style === 'early'
+  ) {
     sec1 = 8473;
     sec2 = 8242;
     reasons[8473] = 'Bone Plating: blunt the first melee burst into your E.';
-    reasons[8242] = 'Unflinching: tenacity when sums down — complete R chains.';
+    reasons[8242] =
+      ctx.allyJungle?.style === 'early'
+        ? `Unflinching: survive ${ctx.allyJungle.champ.name} dive CC so E-R finishes.`
+        : 'Unflinching: tenacity when sums down — complete R chains.';
   }
 
   reasons[5005] = 'AS shard: Q CD is everything.';
@@ -264,9 +326,14 @@ export function calculateYoneRunes(enemyTeam: Champion[], _build?: Build): RuneP
   };
 }
 
-export function analyzeYoneMatchup(enemyTeam: Champion[], build?: Build): MatchupAnalysis {
-  const ctx = scanMid(enemyTeam);
+export function analyzeYoneMatchup(
+  enemyTeam: Champion[],
+  build?: Build,
+  allyJungle?: Champion | null
+): MatchupAnalysis {
+  const ctx = scanMid(enemyTeam, allyJungle);
   const mid = ctx.enemyMid;
+  const jg = ctx.allyJungle;
 
   const analysis: MatchupAnalysis = {
     title: 'SCALE & SNAP',
@@ -305,32 +372,45 @@ export function analyzeYoneMatchup(enemyTeam: Champion[], build?: Build): Matchu
     analysis.title = 'FLEET SURVIVE → SPIKE';
     analysis.description = `${mid.name} owns early poke. Doran's Shield + Fleet; let them push, farm Q range, all-in only on spent spells + Q3.`;
     analysis.winCondition = 'Outscale first item — freeze near tower when possible, then side after 2 items.';
-    analysis.aggressionLevel = 'LOW';
+    analysis.aggressionLevel = jg?.style === 'early' ? 'MODERATE' : 'LOW';
     analysis.tips = [
       `Vs ${mid.name}: Q2 minion → Fleet MS run-up → E>Q>W short trade, snap back.`,
-      'Never burn E as a gap closer into their full rotation — they chunk the spirit form.',
+      jg?.style === 'early'
+        ? `Hard poke — still freeze for ${jg.champ.name}; you don't win 1v1 early, you win the gank.`
+        : 'Never burn E as a gap closer into their full rotation — they chunk the spirit form.',
       ...quirks.slice(0, 2),
     ];
   } else if (mid && HARD_MELEE_BULLY.includes(mid.id)) {
     analysis.title = 'RESPECT WINDOWS';
     analysis.description = `${mid.name} wins early extended trades. Bone Plating; trade only when their gap-closer is down.`;
-    analysis.aggressionLevel = mid.id === 'Pantheon' || mid.id === 'Renekton' ? 'LOW' : 'MODERATE';
+    analysis.aggressionLevel =
+      mid.id === 'Pantheon' || mid.id === 'Renekton'
+        ? jg?.style === 'early'
+          ? 'MODERATE'
+          : 'LOW'
+        : 'MODERATE';
     analysis.tips = [
       mid.id === 'Pantheon'
         ? 'Pantheon E blocks Q3 — bait block, then go. Point-click W owns every naive trade.'
         : `Vs ${mid.name}: short E trades on Q3 only — you scale harder past boots + BotRK.`,
-      'Freeze near tower for jg help; blind all-ins before Berserker\'s are ego.',
+      jg
+        ? `Freeze near tower for ${jg.champ.name} — blind all-ins before Berserker's are ego.`
+        : "Freeze near tower for jg help; blind all-ins before Berserker's are ego.",
       quirks[2],
       quirks[3],
     ];
   } else if (mid && ctx.immobile) {
     analysis.title = 'LANE BOSS TIMELINE';
     analysis.description = `${mid.name} is punishable — crash, deny, look for E-Q3-R all-ins from 6.`;
-    analysis.winCondition = 'Plate + roam tempo after crash; mid is a kill lane post-6.';
+    analysis.winCondition = jg
+      ? `Plate + dive with ${jg.champ.name} after crash; mid is a kill lane post-6.`
+      : 'Plate + roam tempo after crash; mid is a kill lane post-6.';
     analysis.aggressionLevel = 'HIGH';
     analysis.tips = [
       `Level 6 combo: E → Q3 → R → W → autos → Q → snap (aussyelo / OT pattern).`,
-      'Stack Q3 on wave/camp before river fights — enter with knock-up ready.',
+      jg?.style === 'setup' || jg?.style === 'early'
+        ? `Stack Q3 when ${jg.champ.name} paths mid — enter river fights with knock-up ready.`
+        : 'Stack Q3 on wave/camp before river fights — enter with knock-up ready.',
       quirks[0],
       quirks[4],
     ];
@@ -342,9 +422,34 @@ export function analyzeYoneMatchup(enemyTeam: Champion[], build?: Build): Matchu
     ].slice(0, 6);
   }
 
-  // Side lane / mid-game path
-  analysis.roamAdvice =
-    'After 1–2 items: prefer side lane over hovering mid. Push to T2, clear vision, deny camps — Yone duels long lanes; TP covers mid fights.';
+  // Ally jungler is the relevant partner lane (Yone IS mid)
+  if (jg) {
+    analysis.tips = [...jg.notes, ...analysis.tips];
+    if (jg.style === 'early' && ctx.bully) {
+      analysis.title = `PLAY FOR ${jg.champ.name.toUpperCase()}`;
+      analysis.winCondition = `Survive until ${jg.champ.name}'s first mid look, then convert XP/plates — don't ego 1v1.`;
+    } else if (jg.style === 'farm' && ctx.bully) {
+      analysis.description =
+        `${analysis.description} Ally ${jg.champ.name} farms — treat early as solo; no dive timer.`;
+    } else if (jg.style === 'setup') {
+      analysis.winCondition =
+        analysis.winCondition +
+        ` Chain after ${jg.champ.name}'s CC — your E-R cleans the skirmish.`;
+    }
+  }
+
+  // Pathing advice: jungle sync, not "ally mid"
+  if (jg?.style === 'early') {
+    analysis.roamAdvice = `Sync with ${jg.champ.name}: thin/freeze for their mid path, then crash and take river/scuttle. After 1–2 items, side-lane duel — TP covers fights.`;
+  } else if (jg?.style === 'setup') {
+    analysis.roamAdvice = `Hover for ${jg.champ.name} engages — stack Q3, E-R after their CC. Post two items, take side and TP to their objective setups.`;
+  } else if (jg?.style === 'farm') {
+    analysis.roamAdvice = `${jg.champ.name} scales camps — you hold mid alone early. After boots + legendary, side-lane pressure; meet them at second dragon/Herald.`;
+  } else {
+    analysis.roamAdvice = jg
+      ? `Track ${jg.champ.name}'s clear — trade aggressive only when they can path mid. After 1–2 items, prefer side over hovering; TP covers fights.`
+      : 'Track your jungler path — freeze for ganks, crash when they invade. After 1–2 items, side-lane duel; TP covers fights.';
+  }
 
   if (build?.boots.id === ITEMS.BERSERKERS.id) {
     analysis.tips = [`Boots path: ${build.boots.reason}`, ...analysis.tips].slice(0, 6);
@@ -354,13 +459,21 @@ export function analyzeYoneMatchup(enemyTeam: Champion[], build?: Build): Matchu
   return analysis;
 }
 
-export function calculateYoneDominance(enemyTeam: Champion[], build: Build): DominanceMetrics {
-  const ctx = scanMid(enemyTeam);
+export function calculateYoneDominance(
+  enemyTeam: Champion[],
+  build: Build,
+  allyJungle?: Champion | null
+): DominanceMetrics {
+  const ctx = scanMid(enemyTeam, allyJungle);
   let score = 48;
   if (ctx.immobile) score += 18;
   if (ctx.bully) score -= 12;
   if (ctx.assassin) score -= 8;
   if (ctx.tanks >= 2) score -= 6;
+  // Ally jungle swings early favor
+  if (ctx.allyJungle?.style === 'early') score += ctx.bully ? 10 : 6;
+  if (ctx.allyJungle?.style === 'setup') score += 5;
+  if (ctx.allyJungle?.style === 'farm' && ctx.bully) score -= 4;
   if (build.core.some((i) => i.id === ITEMS.BOTRK.id || i.id === ITEMS.KRAKEN.id)) score += 4;
   score = Math.min(100, Math.max(0, score));
 
@@ -379,16 +492,28 @@ export function calculateYoneDominance(enemyTeam: Champion[], build: Build): Dom
     D: 'HARD MATCHUP',
   };
 
+  const jgBit = ctx.allyJungle
+    ? ctx.allyJungle.style === 'early'
+      ? ` Play for ${ctx.allyJungle.champ.name} ganks.`
+      : ctx.allyJungle.style === 'farm'
+        ? ` Solo lane early — ${ctx.allyJungle.champ.name} farms.`
+        : ` Chain with ${ctx.allyJungle.champ.name}.`
+    : '';
+
   return {
     score,
     grade,
     title: titles[grade] || 'YONE',
-    summary: ctx.immobile
+    summary: (ctx.immobile
       ? 'Immobile mid — play for plates and level 6 all-ins, then side.'
       : ctx.bully
         ? 'Bully lane — Fleet/Shield, scale to Berserker + BotRK, then take over sides.'
-        : 'Farm for boots spike; win through E timing and side-lane duels.',
-    earlyGameScore: ctx.immobile ? 70 : ctx.bully ? 35 : 45,
+        : 'Farm for boots spike; win through E timing and side-lane duels.') + jgBit,
+    earlyGameScore: Math.min(
+      100,
+      (ctx.immobile ? 70 : ctx.bully ? 35 : 45) +
+        (ctx.allyJungle?.style === 'early' ? 12 : ctx.allyJungle?.style === 'farm' && ctx.bully ? -8 : 0)
+    ),
     midGameScore: 75,
     lateGameScore: 85,
   };

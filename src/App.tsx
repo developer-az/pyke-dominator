@@ -29,6 +29,7 @@ const App: React.FC = () => {
     Support: null,
     YourADC: null,
     YourMid: null,
+    YourJungle: null,
   });
   const [selections, setSelections] = useState<{ [key: string]: Champion | null }>(emptySelections);
   const [build, setBuild] = useState<Build | null>(null);
@@ -355,6 +356,19 @@ const App: React.FC = () => {
                     hasUpdates = true;
                   }
                 }
+
+                // Ally jungler — Yone Mid's partner lane (Yone is mid himself)
+                const jgMember = myTeam.find((m) => {
+                  const pos = (m.assignedPosition || m.teamPosition || m.position || '').toUpperCase();
+                  return pos === 'JUNGLE' && isAllyNotSelf(m);
+                });
+                if (jgMember?.championId) {
+                  const jgChamp = champions.find((c) => c.key === String(jgMember.championId));
+                  if (jgChamp && newSelections.YourJungle?.id !== jgChamp.id) {
+                    newSelections.YourJungle = jgChamp;
+                    hasUpdates = true;
+                  }
+                }
               }
 
               return hasUpdates ? newSelections : prev;
@@ -399,15 +413,17 @@ const App: React.FC = () => {
 
     const enemyRoles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
     const enemies = enemyRoles.map(role => selections[role]).filter(c => c !== null) as Champion[];
-    const yourADC = selections.YourADC;
-    const yourMid = selections.YourMid;
+    // Pyke partners: ADC + Mid. Yone is mid — partner is Jungle only.
+    const yourADC = profile.id === 'yone-mid' ? null : selections.YourADC;
+    const allyPartner =
+      profile.id === 'yone-mid' ? selections.YourJungle : selections.YourMid;
 
     if (enemies.length > 0) {
-      const currentBuild = profile.calculateBuild(enemies, yourADC, yourMid);
+      const currentBuild = profile.calculateBuild(enemies, yourADC, allyPartner);
       setBuild(currentBuild);
-      setRunes(profile.calculateRunes(enemies, currentBuild, yourADC, yourMid));
-      setAnalysis(profile.analyzeMatchup(enemies, currentBuild, yourADC, yourMid));
-      setDominance(profile.calculateDominance(enemies, currentBuild));
+      setRunes(profile.calculateRunes(enemies, currentBuild, yourADC, allyPartner));
+      setAnalysis(profile.analyzeMatchup(enemies, currentBuild, yourADC, allyPartner));
+      setDominance(profile.calculateDominance(enemies, currentBuild, yourADC, allyPartner));
     } else {
       setBuild(null);
       setRunes(null);
@@ -784,7 +800,7 @@ const App: React.FC = () => {
           )}
           {window.electronAPI && (
             <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-chrome-dim/70">
-              Tip: set League to <strong className="text-chrome-dim">Borderless</strong>. Hit <strong className="text-chrome-dim">Sync LoL</strong>, then unlock overlay (Ctrl+Shift+U) — fullscreen filled guides appear over your real HUD/minimap so you can nudge until they match.
+              Tip: set League to <strong className="text-chrome-dim">Borderless</strong>. Unlock (Ctrl+Shift+U) opens a small draggable panel — game clicks still work around it. Use <strong className="text-chrome-dim">Align HUD</strong> on that panel for fullscreen guide fitting.
             </p>
           )}
         </header>
@@ -845,8 +861,14 @@ const App: React.FC = () => {
             {/* Ally lanes relevant to active profile */}
             <HudFrame accent="cyan" label="Bond" className="p-5">
               <h2 className="hud-heading text-xl text-chrome-bright mb-5">
-                <ChromeMark size={14} className="text-chrome-dim" /> Ally Lanes
+                <ChromeMark size={14} className="text-chrome-dim" />{' '}
+                {profile.id === 'yone-mid' ? 'Ally Jungle' : 'Ally Lanes'}
               </h2>
+              <p className="text-[9px] font-mono text-chrome-dim/70 mb-3 tracking-wide">
+                {profile.id === 'yone-mid'
+                  ? 'You are mid — matchup math uses your jungler, not another mid.'
+                  : 'ADC + mid for roam / 2v2 scoring.'}
+              </p>
               <ChampionSelect
                 champions={champions}
                 selections={selections}

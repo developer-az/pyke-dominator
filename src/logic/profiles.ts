@@ -36,24 +36,33 @@ export interface ChampionProfile {
   runePageName: string;
   itemSetTitle: string;
   brandTitle: string;
-  /** Ally lanes that matter for this profile's scoring */
-  focusAllies: Array<'YourADC' | 'YourMid'>;
+  /**
+   * Ally slots that matter for this profile's scoring.
+   * Pyke (support): ADC + Mid. Yone (mid): Jungle — never Mid (you are mid).
+   */
+  focusAllies: Array<'YourADC' | 'YourMid' | 'YourJungle'>;
   /** Enemy role that is the primary matchup focus */
   primaryEnemyRole: 'Support' | 'Mid' | 'Bot' | 'Top';
-  calculateBuild: (enemies: Champion[], yourADC?: Champion | null, yourMid?: Champion | null) => Build;
+  /** Second ally arg: Pyke = mid laner; Yone = jungler */
+  calculateBuild: (enemies: Champion[], yourADC?: Champion | null, allyPartner?: Champion | null) => Build;
   calculateRunes: (
     enemies: Champion[],
     build?: Build,
     yourADC?: Champion | null,
-    yourMid?: Champion | null
+    allyPartner?: Champion | null
   ) => RunePage;
   analyzeMatchup: (
     enemies: Champion[],
     build?: Build,
     yourADC?: Champion | null,
-    yourMid?: Champion | null
+    allyPartner?: Champion | null
   ) => MatchupAnalysis;
-  calculateDominance: (enemies: Champion[], build: Build) => DominanceMetrics;
+  calculateDominance: (
+    enemies: Champion[],
+    build: Build,
+    yourADC?: Champion | null,
+    allyPartner?: Champion | null
+  ) => DominanceMetrics;
 }
 
 const pykeSupport: ChampionProfile = {
@@ -71,7 +80,7 @@ const pykeSupport: ChampionProfile = {
   calculateBuild,
   calculateRunes,
   analyzeMatchup,
-  calculateDominance: calculateDominanceFactor,
+  calculateDominance: (enemies, build) => calculateDominanceFactor(enemies, build),
 };
 
 const yoneMid: ChampionProfile = {
@@ -84,15 +93,17 @@ const yoneMid: ChampionProfile = {
   runePageName: 'Yone Mid Dominator',
   itemSetTitle: 'Yone Mid Dominator',
   brandTitle: 'Yone Dominator',
-  focusAllies: ['YourMid'],
+  // You ARE mid — ally context is jungle pathing / dive sync, not another mid
+  focusAllies: ['YourJungle'],
   primaryEnemyRole: 'Mid',
-  calculateBuild: (enemies) => calculateYoneBuild(enemies),
-  calculateRunes: (enemies, build) => {
-    const page = calculateYoneRunes(enemies, build);
+  calculateBuild: (enemies, _adc, allyJungle) => calculateYoneBuild(enemies, allyJungle),
+  calculateRunes: (enemies, _build, _adc, allyJungle) => {
+    const page = calculateYoneRunes(enemies, allyJungle);
     return { ...page, name: 'Yone Mid Dominator' };
   },
-  analyzeMatchup: (enemies, build) => analyzeYoneMatchup(enemies, build),
-  calculateDominance: calculateYoneDominance,
+  analyzeMatchup: (enemies, build, _adc, allyJungle) => analyzeYoneMatchup(enemies, build, allyJungle),
+  calculateDominance: (enemies, build, _adc, allyJungle) =>
+    calculateYoneDominance(enemies, build, allyJungle),
 };
 
 export const PROFILES: ChampionProfile[] = [pykeSupport, yoneMid];

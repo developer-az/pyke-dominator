@@ -9,9 +9,10 @@ import {
     setOverlayUserHidden,
     toggleClickThrough,
     isClickThrough,
+    isAlignMode,
+    setAlignMode,
     isOverlayUserHidden,
     showOverlay,
-    getOverlayWindow,
     getHudScale,
     setHudScale,
     getMapScale,
@@ -23,6 +24,7 @@ import {
     adjustCalibration,
     resetCalibration,
     getGameResolution,
+    broadcastOverlayMeta,
     type FrameCalibration,
 } from './overlay-window';
 import { formatAdcClipboard } from './summoner-tracker';
@@ -97,13 +99,11 @@ function registerOverlayHotkeys() {
     });
 
     const clickOk = globalShortcut.register('CommandOrControl+Shift+U', () => {
+        // Unlock = compact movable panel; Lock = fullscreen click-through.
+        // (HUD align is a separate mode — do not cover the whole screen here.)
         const clickThrough = toggleClickThrough();
         win?.webContents.send('overlay-clickthrough-changed', { clickThrough });
-        getOverlayWindow()?.webContents.send('overlay-meta', {
-            visible: !isOverlayUserHidden(),
-            clickThrough,
-            userHidden: isOverlayUserHidden(),
-        });
+        broadcastOverlayMeta();
     });
 
     if (!hideOk || !globalShortcut.isRegistered('CommandOrControl+Shift+H')) {
@@ -274,6 +274,16 @@ app.whenReady().then(() => {
         }
     });
 
+    ipcMain.handle('overlay-set-align-mode', async (_event, enabled: boolean) => {
+        try {
+            const alignMode = setAlignMode(!!enabled);
+            return { success: true, alignMode, clickThrough: isClickThrough() };
+        } catch (error) {
+            console.error('[overlay] Failed to set align mode:', error);
+            return { success: false, alignMode: isAlignMode(), clickThrough: isClickThrough() };
+        }
+    });
+
     ipcMain.handle('overlay-set-hud-scale', async (_event, scale: number) => {
         if (!Number.isFinite(scale)) {
             return { success: false, hudScale: getHudScale() };
@@ -316,6 +326,7 @@ app.whenReady().then(() => {
             success: true,
             visible: !isOverlayUserHidden(),
             clickThrough: isClickThrough(),
+            alignMode: isAlignMode(),
             inGame: isCurrentlyInGame(),
             hudScale: getHudScale(),
             mapScale: getMapScale(),

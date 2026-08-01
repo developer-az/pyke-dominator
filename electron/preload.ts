@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     toggleOverlay: () => ipcRenderer.invoke('overlay-toggle'),
     setOverlayVisible: (visible: boolean) => ipcRenderer.invoke('overlay-set-visible', visible),
     toggleOverlayClickThrough: () => ipcRenderer.invoke('overlay-toggle-clickthrough'),
+    setOverlayAlignMode: (enabled: boolean) => ipcRenderer.invoke('overlay-set-align-mode', enabled),
     setOverlayHudScale: (scale: number) => ipcRenderer.invoke('overlay-set-hud-scale', scale),
     setOverlayMapScale: (scale: number) => ipcRenderer.invoke('overlay-set-map-scale', scale),
     setOverlayChromeColor: (color: string) => ipcRenderer.invoke('overlay-set-chrome-color', color),

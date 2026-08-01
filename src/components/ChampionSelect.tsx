@@ -115,7 +115,13 @@ export const ChampionSelect: React.FC<Props> = ({ champions, onSelectionChange, 
                         <label className={`font-mono uppercase tracking-[0.16em] text-[10px] mb-0.5 ${
                             role === 'YourADC' ? 'text-chrome-dim' : 'text-chrome-silver'
                         }`}>
-                            {role === 'YourADC' ? 'Your ADC' : role === 'YourMid' ? 'Your Mid' : role}
+                            {role === 'YourADC'
+                              ? 'Your ADC'
+                              : role === 'YourMid'
+                                ? 'Your Mid'
+                                : role === 'YourJungle'
+                                  ? 'Your Jungle'
+                                  : role}
                         </label>
                         <div 
                             className="relative" 

@@ -43,6 +43,7 @@ declare global {
             toggleOverlay: () => Promise<{ success: boolean; visible: boolean }>;
             setOverlayVisible: (visible: boolean) => Promise<{ success: boolean; visible: boolean }>;
             toggleOverlayClickThrough: () => Promise<{ success: boolean; clickThrough: boolean }>;
+            setOverlayAlignMode: (enabled: boolean) => Promise<{ success: boolean; alignMode: boolean; clickThrough: boolean }>;
             setOverlayHudScale: (scale: number) => Promise<{ success: boolean; hudScale: number }>;
             setOverlayMapScale: (scale: number) => Promise<{ success: boolean; mapScale: number }>;
             setOverlayChromeColor: (color: string) => Promise<{ success: boolean; chromeColor: string }>;
@@ -53,6 +54,7 @@ declare global {
                 success: boolean;
                 visible: boolean;
                 clickThrough: boolean;
+                alignMode?: boolean;
                 inGame: boolean;
                 hudScale: number;
                 mapScale?: number;

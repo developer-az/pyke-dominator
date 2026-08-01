@@ -84,5 +84,5 @@ jobs:
             - In-game overlay cues, bot-lane summoner timers, vision/jg timing helps
             - Feedback welcome — expect rough edges
 
-            Previous `1.x` numbering is retired; this beta line starts at `1.0.0-beta.1`.
+            Previous `1.x` numbering is retired; this beta line started at `1.0.0-beta.1`.
           generateReleaseNotes: true

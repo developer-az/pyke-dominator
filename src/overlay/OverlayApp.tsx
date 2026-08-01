@@ -11,6 +11,7 @@ import {
   formatGameTime,
   resolveAllyAdcName,
   resolveAllyMidName,
+  resolveAllyJungleName,
   type OverlayState,
 } from './overlayLogic';
 import { SummonerTimers } from '../components/SummonerTimers';
@@ -51,6 +52,7 @@ export const OverlayApp: React.FC = () => {
   const [state, setState] = useState<OverlayState>({ inGame: false });
   const [champions, setChampions] = useState<Champion[]>([]);
   const [clickThrough, setClickThrough] = useState(true);
+  const [alignMode, setAlignMode] = useState(false);
   const [hudScale, setHudScale] = useState(20);
   const [mapScale, setMapScale] = useState(33);
   const [chromeColor, setChromeColor] = useState('#d4d8de');
@@ -58,6 +60,7 @@ export const OverlayApp: React.FC = () => {
   const [gameWidth, setGameWidth] = useState(1920);
   const [gameHeight, setGameHeight] = useState(1080);
   const [calibration, setCalibration] = useState<OverlayCalibration>({ ability: emptyCalibration(), minimap: emptyCalibration() });
+  const compactPanel = !clickThrough && !alignMode;
   const [profileId, setProfileId] = useState<ProfileId>(() =>
     typeof window !== 'undefined' ? loadStoredProfileId() : 'pyke-support'
   );
@@ -111,6 +114,7 @@ export const OverlayApp: React.FC = () => {
     const unsubMeta = window.electronAPI.onOverlayMeta?.((payload) => {
       const meta = payload as {
         clickThrough?: boolean;
+        alignMode?: boolean;
         hudScale?: number;
         mapScale?: number;
         chromeColor?: string;
@@ -120,6 +124,9 @@ export const OverlayApp: React.FC = () => {
       };
       if (typeof meta.clickThrough === 'boolean') {
         setClickThrough(meta.clickThrough);
+      }
+      if (typeof meta.alignMode === 'boolean') {
+        setAlignMode(meta.alignMode);
       }
       if (typeof meta.hudScale === 'number') {
         setHudScale(meta.hudScale);
@@ -140,6 +147,9 @@ export const OverlayApp: React.FC = () => {
     window.electronAPI.getOverlayStatus?.().then((res) => {
       if (res?.success && typeof res.clickThrough === 'boolean') {
         setClickThrough(res.clickThrough);
+      }
+      if (res?.success && typeof res.alignMode === 'boolean') {
+        setAlignMode(res.alignMode);
       }
       if (res?.success && typeof res.hudScale === 'number') {
         setHudScale(res.hudScale);
@@ -208,7 +218,7 @@ export const OverlayApp: React.FC = () => {
   }, [state.allies, champions]);
 
   const yourMidChampion: Champion | null = useMemo(() => {
-    if (!champions.length) return null;
+    if (!champions.length || profileId === 'yone-mid') return null;
     const name = resolveAllyMidName(state.allies, champions);
     if (!name) return null;
     return (
@@ -216,30 +226,44 @@ export const OverlayApp: React.FC = () => {
         (c) => c.name.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase()
       ) || null
     );
-  }, [state.allies, champions]);
+  }, [state.allies, champions, profileId]);
+
+  const yourJungleChampion: Champion | null = useMemo(() => {
+    if (!champions.length || profileId !== 'yone-mid') return null;
+    const name = resolveAllyJungleName(state.allies, champions);
+    if (!name) return null;
+    return (
+      champions.find(
+        (c) => c.name.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase()
+      ) || null
+    );
+  }, [state.allies, champions, profileId]);
+
+  const allyPartner = profileId === 'yone-mid' ? yourJungleChampion : yourMidChampion;
+  const adcForProfile = profileId === 'yone-mid' ? null : yourAdcChampion;
 
   const build: Build | null = useMemo(
     () =>
       enemyChampions.length > 0
-        ? profile.calculateBuild(enemyChampions, yourAdcChampion, yourMidChampion)
+        ? profile.calculateBuild(enemyChampions, adcForProfile, allyPartner)
         : null,
-    [enemyChampions, yourAdcChampion, yourMidChampion, profile]
+    [enemyChampions, adcForProfile, allyPartner, profile]
   );
 
   const runes: RunePage | null = useMemo(
     () =>
       enemyChampions.length > 0 && build
-        ? profile.calculateRunes(enemyChampions, build, yourAdcChampion, yourMidChampion)
+        ? profile.calculateRunes(enemyChampions, build, adcForProfile, allyPartner)
         : null,
-    [enemyChampions, build, yourAdcChampion, yourMidChampion, profile]
+    [enemyChampions, build, adcForProfile, allyPartner, profile]
   );
 
   const analysis: MatchupAnalysis | null = useMemo(
     () =>
       enemyChampions.length > 0 && build
-        ? profile.analyzeMatchup(enemyChampions, build, yourAdcChampion, yourMidChampion)
+        ? profile.analyzeMatchup(enemyChampions, build, adcForProfile, allyPartner)
         : null,
-    [enemyChampions, build, yourAdcChampion, yourMidChampion, profile]
+    [enemyChampions, build, adcForProfile, allyPartner, profile]
   );
 
   const cues = useMemo(
@@ -259,8 +283,20 @@ export const OverlayApp: React.FC = () => {
         if (res?.success && typeof res.clickThrough === 'boolean') {
           setClickThrough(res.clickThrough);
         }
+        setAlignMode(false);
       })
       .catch((error) => console.error('Unable to change overlay mode:', error));
+  };
+
+  const handleAlignMode = (enabled: boolean) => {
+    void window.electronAPI?.setOverlayAlignMode?.(enabled)
+      .then((res) => {
+        if (res?.success) {
+          if (typeof res.alignMode === 'boolean') setAlignMode(res.alignMode);
+          if (typeof res.clickThrough === 'boolean') setClickThrough(res.clickThrough);
+        }
+      })
+      .catch((error) => console.error('Unable to change align mode:', error));
   };
 
   const nudge = (target: 'ability' | 'minimap', field: 'dx' | 'dy' | 'dw' | 'dh', delta: number) => {
@@ -308,28 +344,28 @@ export const OverlayApp: React.FC = () => {
       className="w-screen h-screen bg-transparent overflow-hidden select-none"
       style={{ ['--overlay-scale' as string]: `${0.75 + hudScale / 200}` }}
     >
-      {/* Alignment corner-marks stay on while in-game — lightweight, static, no blur/animation */}
+      {/* HUD frames: fullscreen pass-through or align mode only — never on the compact panel */}
       <ChromeGameHud
         hudScale={Number.isFinite(hudScale) ? hudScale : 20}
         mapScale={Number.isFinite(mapScale) ? mapScale : 33}
-        enabled
+        enabled={!compactPanel}
         chromeColor={chromeColor}
         calibration={calibration}
-        showGuides={!clickThrough}
+        showGuides={alignMode}
         gameWidth={gameWidth}
         gameHeight={gameHeight}
       />
 
-      {!clickThrough && (
+      {alignMode && (
       <div className="hud-overlay-controls absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto z-10">
         <ChromeMark className="hud-chrome-mark" size={11} />
         <button
           type="button"
-          onClick={handleHide}
+          onClick={() => handleAlignMode(false)}
           className="hud-btn"
-          title="Hide overlay (Ctrl+Shift+H)"
+          title="Leave fullscreen guides — back to movable panel"
         >
-          Hide
+          Done aligning
         </button>
         <button
           type="button"
@@ -337,7 +373,7 @@ export const OverlayApp: React.FC = () => {
           className="hud-btn"
           title="Lock overlay and pass clicks to League (Ctrl+Shift+U)"
         >
-          Lock · done aligning
+          Lock overlay
         </button>
         <NudgeGroup label="Ability" onNudge={(field, delta) => nudge('ability', field, delta)} />
         <NudgeGroup label="Map" onNudge={(field, delta) => nudge('minimap', field, delta)} />
@@ -353,22 +389,26 @@ export const OverlayApp: React.FC = () => {
           Sync LoL
         </button>
         <span className="px-1 text-[8px] tracking-wider opacity-50">
-          Fullscreen align · match filled boxes to HUD/map
+          Match filled boxes to your League HUD / minimap
         </span>
       </div>
       )}
 
       <div
-        className={`hud-overlay-scale absolute top-16 right-4 w-[280px] ${collapsed ? 'opacity-70' : 'opacity-100'}`}
+        className={
+          compactPanel
+            ? `hud-overlay-scale absolute inset-2 ${collapsed ? 'opacity-70' : 'opacity-100'}`
+            : `hud-overlay-scale absolute top-16 right-4 w-[280px] ${collapsed ? 'opacity-70' : 'opacity-100'}`
+        }
       >
-        <div className="hud-overlay-panel">
+        <div className="hud-overlay-panel h-full">
           <span className="hud-corner hud-corner-tl" aria-hidden />
           <span className="hud-corner hud-corner-br" aria-hidden />
           <span className="hud-rail hud-rail-top" aria-hidden />
 
           <div
             className="hud-chrome-header"
-            style={!clickThrough ? { WebkitAppRegion: 'drag' } as React.CSSProperties : undefined}
+            style={compactPanel ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
           >
             <div className="flex items-center gap-2 min-w-0">
               <ChromeMark className="hud-chrome-mark" size={13} />
@@ -382,11 +422,39 @@ export const OverlayApp: React.FC = () => {
                     ? ` · ${formatGameTime(state.gameTime)}`
                     : ''}
                   {state.localPlayer ? ` · Lv ${state.localPlayer.level}` : ''}
+                  {compactPanel ? ' · Drag to move' : ''}
                 </div>
               </div>
             </div>
-            {!clickThrough && (
-              <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {compactPanel && (
+              <div
+                className="flex flex-wrap gap-1 justify-end"
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleAlignMode(true)}
+                  className="hud-btn"
+                  title="Fullscreen HUD/minimap guides to nudge fit"
+                >
+                  Align HUD
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleClicks}
+                  className="hud-btn"
+                  title="Lock overlay — clicks pass through to League (Ctrl+Shift+U)"
+                >
+                  Lock
+                </button>
+                <button
+                  type="button"
+                  onClick={handleHide}
+                  className="hud-btn"
+                  title="Hide overlay (Ctrl+Shift+H)"
+                >
+                  Hide
+                </button>
                 <button
                   type="button"
                   onClick={() => setCollapsed((c) => !c)}

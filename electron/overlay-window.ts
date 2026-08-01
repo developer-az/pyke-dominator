@@ -56,6 +56,16 @@ function normalizeFrameCalibration(value: unknown): FrameCalibration | null {
 }
 let interactiveBounds: Electron.Rectangle | null = null;
 
+/** Compact unlocked panel size — must NOT cover the whole game. */
+const INTERACTIVE_WIDTH = 360;
+const INTERACTIVE_HEIGHT = 760;
+
+/**
+ * Fullscreen HUD/minimap guide mode (separate from "Unlocked · Move").
+ * Unlock = small draggable panel. Align = temporary fullscreen calibration.
+ */
+let alignMode = false;
+
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 function getOverlayUrl(): string {
@@ -311,22 +321,52 @@ export function setOverlayUserHidden(hidden: boolean): void {
     broadcastOverlayMeta();
 }
 
-export function setClickThrough(enabled: boolean): void {
-    clickThrough = enabled;
+function applyFullscreenBounds(): void {
     if (!overlayWin || overlayWin.isDestroyed()) return;
-
-    // Always stay fullscreen over the game display. Shrinking to a 360×760
-    // panel made HUD/minimap frames meaningless for alignment (they measured
-    // against the tiny window, not League's HUD). Unlock = align mode with
-    // mouse events on so nudge controls work; Lock = click-through again.
     const display = screen.getDisplayMatching(overlayWin.getBounds()) || screen.getPrimaryDisplay();
     overlayWin.setBounds(display.bounds);
     overlayWin.setMovable(false);
+}
+
+function applyCompactPanelBounds(): void {
+    if (!overlayWin || overlayWin.isDestroyed()) return;
+    const display = screen.getPrimaryDisplay();
+    const fallbackBounds: Electron.Rectangle = {
+        x: display.workArea.x + display.workArea.width - INTERACTIVE_WIDTH - 16,
+        y: display.workArea.y + 48,
+        width: INTERACTIVE_WIDTH,
+        height: INTERACTIVE_HEIGHT,
+    };
+    const target = interactiveBounds || fallbackBounds;
+    overlayWin.setBounds({
+        x: target.x,
+        y: target.y,
+        width: INTERACTIVE_WIDTH,
+        height: INTERACTIVE_HEIGHT,
+    });
+    overlayWin.setMovable(true);
+}
+
+export function setClickThrough(enabled: boolean): void {
+    const wasClickThrough = clickThrough;
+    const wasAlign = alignMode;
+    clickThrough = enabled;
+    if (!overlayWin || overlayWin.isDestroyed()) return;
 
     if (enabled) {
+        // Save only when leaving the compact movable panel (not fullscreen align)
+        if (!wasClickThrough && !wasAlign) {
+            interactiveBounds = overlayWin.getBounds();
+            saveSettings();
+        }
+        alignMode = false;
+        applyFullscreenBounds();
         overlayWin.setFocusable(false);
         overlayWin.setIgnoreMouseEvents(true, { forward: true });
     } else {
+        // Unlocked = compact movable panel (game stays clickable around it)
+        alignMode = false;
+        applyCompactPanelBounds();
         overlayWin.setFocusable(true);
         overlayWin.setIgnoreMouseEvents(false);
         overlayWin.show();
@@ -342,6 +382,47 @@ export function toggleClickThrough(): boolean {
 
 export function isClickThrough(): boolean {
     return clickThrough;
+}
+
+export function isAlignMode(): boolean {
+    return alignMode;
+}
+
+/** Fullscreen HUD/minimap guides for calibration — not the same as Unlock/Move. */
+export function setAlignMode(enabled: boolean): boolean {
+    if (!overlayWin || overlayWin.isDestroyed()) {
+        alignMode = enabled;
+        return alignMode;
+    }
+
+    if (enabled) {
+        // Remember compact position if we were in the movable panel
+        if (!clickThrough && !alignMode) {
+            interactiveBounds = overlayWin.getBounds();
+            saveSettings();
+        }
+        alignMode = true;
+        clickThrough = false;
+        applyFullscreenBounds();
+        overlayWin.setFocusable(true);
+        overlayWin.setIgnoreMouseEvents(false);
+        overlayWin.show();
+        overlayWin.focus();
+    } else {
+        alignMode = false;
+        // Back to compact movable panel (still unlocked)
+        clickThrough = false;
+        applyCompactPanelBounds();
+        overlayWin.setFocusable(true);
+        overlayWin.setIgnoreMouseEvents(false);
+        overlayWin.show();
+    }
+    broadcastOverlayMeta();
+    return alignMode;
+}
+
+export function toggleAlignMode(): boolean {
+    return setAlignMode(!alignMode);
 }
 
 export function getHudScale(): number {
@@ -428,7 +509,7 @@ export function broadcastOverlayMeta(): void {
         calibration,
         gameWidth,
         gameHeight,
-        alignMode: !clickThrough,
+        alignMode,
     });
 }
 
