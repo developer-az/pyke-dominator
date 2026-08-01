@@ -1,4 +1,6 @@
 import type { Build, MatchupAnalysis } from '../logic/pykeLogic';
+import type { ProfileId } from '../logic/profiles';
+import { formatCd } from '../logic/summonerSpells';
 
 export interface OverlayEnemy {
   championName: string;
@@ -13,6 +15,24 @@ export interface OverlayEnemy {
     kills: number;
     wardScore: number;
   };
+  summonerSpells?: {
+    summonerSpellOne?: { displayName: string };
+    summonerSpellTwo?: { displayName: string };
+  };
+}
+
+export interface OverlayBotSummoner {
+  role: 'Bot' | 'Support';
+  championName: string;
+  championId?: number;
+  spells: Array<{
+    name: string;
+    short: string;
+    baseCd: number;
+    remaining: number;
+    ready: boolean;
+    source?: string;
+  }>;
 }
 
 export interface OverlayLocalPlayer {
@@ -37,9 +57,12 @@ export interface OverlayState {
   mapName?: string | null;
   localPlayer?: OverlayLocalPlayer | null;
   isPyke?: boolean;
+  isYone?: boolean;
+  profileHint?: ProfileId | null;
   enemies?: OverlayEnemy[];
   allies?: Array<{ championName: string; level: number; position?: string; isDead?: boolean }>;
   cachedChampSelectEnemies?: Array<{ championId: number; championName?: string; position?: string }>;
+  enemyBotSummoners?: OverlayBotSummoner[];
   activePlayerLevel?: number;
   timestamp?: number;
 }
@@ -54,6 +77,7 @@ export interface OverlayCue {
 export interface OverlayCueContext {
   analysis?: MatchupAnalysis | null;
   build?: Build | null;
+  profileId?: ProfileId;
 }
 
 /** Practical cues from Live Client + matchup analysis — levels, items, clock, mid/bot route. */
@@ -61,6 +85,112 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
   const cues: OverlayCue[] = [];
   if (!state.inGame) return cues;
 
+  const profileId = ctx.profileId || state.profileHint || (state.isYone ? 'yone-mid' : 'pyke-support');
+  if (profileId === 'yone-mid') {
+    return buildYoneCues(state, ctx);
+  }
+  return buildPykeCues(state, ctx);
+}
+
+function buildYoneCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[] {
+  const cues: OverlayCue[] = [];
+  const { analysis, build } = ctx;
+  const level = state.localPlayer?.level ?? state.activePlayerLevel ?? 1;
+  const gameTime = state.gameTime ?? 0;
+  const minutes = Math.floor(gameTime / 60);
+  const itemNames = (state.localPlayer?.items || []).map((i) => i.displayName.toLowerCase());
+  const hasBerserkers = itemNames.some((n) => n.includes('berserker') || n.includes('greaves'));
+  const hasBotrk = itemNames.some((n) => n.includes('ruined') || n.includes('botrk') || n.includes('blade of the'));
+  const hasShieldbow = itemNames.some((n) => n.includes('shieldbow'));
+  const hasKraken = itemNames.some((n) => n.includes('kraken'));
+  const hasIE = itemNames.some((n) => n.includes('infinity'));
+  const firstLegendary = hasBotrk || hasKraken;
+  const lowAggro = analysis?.aggressionLevel === 'LOW';
+
+  if (level <= 2) {
+    cues.push({
+      id: 'yone-early',
+      label: 'Farm range Q',
+      detail: lowAggro
+        ? 'Let them push. Preserve HP — E trades start at 3.'
+        : 'Thin with Q. Level 3 E is the first real window.',
+      urgency: 'warn',
+    });
+  } else if (level >= 3 && level < 6) {
+    cues.push({
+      id: 'yone-e-trades',
+      label: `L${level} E trades`,
+      detail: 'Q3 ready → short E>Q>W → snap back. Do not open E into their full combo.',
+      urgency: 'spike',
+    });
+  } else if (level >= 6 && level < 9) {
+    cues.push({
+      id: 'yone-ult',
+      label: 'R online',
+      detail: 'E → Q3 → R → W → autos → snap. Miss R = leave.',
+      urgency: 'spike',
+    });
+  } else if (level >= 11) {
+    cues.push({
+      id: 'yone-side',
+      label: 'Side lane',
+      detail: analysis?.roamAdvice?.slice(0, 120) || 'Push side, deny camps, TP to fights — long-lane duelist.',
+      urgency: 'warn',
+    });
+  }
+
+  if (minutes >= 2 && minutes <= 5 && !hasBerserkers) {
+    cues.push({
+      id: 'yone-boots',
+      label: "Rush Berserker's",
+      detail: 'AS boots cut Q CD — real first spike before legendaries.',
+      urgency: 'spike',
+    });
+  }
+  if (hasBerserkers && !firstLegendary) {
+    cues.push({
+      id: 'yone-core1',
+      label: build?.core[0] ? `Next: ${build.core[0].name}` : 'Rush core',
+      detail: build?.core[0]?.reason?.slice(0, 110) || 'BotRK / Kraken — E skirmish spike.',
+      urgency: 'spike',
+    });
+  }
+  if (firstLegendary && !hasShieldbow && !hasIE) {
+    cues.push({
+      id: 'yone-core2',
+      label: hasKraken ? 'Shieldbow / IE' : 'Shieldbow next',
+      detail: 'Crit + lifeline — convert all-ins without dying on snap-back.',
+      urgency: 'info',
+    });
+  }
+  if ((hasShieldbow || hasKraken) && hasBotrk && !hasIE && minutes >= 14) {
+    cues.push({
+      id: 'yone-ie',
+      label: 'IE window',
+      detail: '100% crit is the relative power peak — take fights.',
+      urgency: 'spike',
+    });
+  }
+
+  // Summoner-aware bot lane cue when Flash is down
+  const flashDown = (state.enemyBotSummoners || []).flatMap((l) =>
+    l.spells.filter((s) => s.short === 'Flash' && !s.ready && s.remaining > 0)
+  );
+  if (flashDown.length > 0) {
+    cues.push({
+      id: 'sum-flash',
+      label: 'Flash down',
+      detail: `Enemy bot Flash ~${formatCd(flashDown[0].remaining)} — look for R picks.`,
+      urgency: 'spike',
+    });
+  }
+
+  const priority = { spike: 0, warn: 1, info: 2 } as const;
+  return cues.sort((a, b) => priority[a.urgency] - priority[b.urgency]).slice(0, 2);
+}
+
+function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[] {
+  const cues: OverlayCue[] = [];
   const { analysis, build } = ctx;
   const level = state.localPlayer?.level ?? state.activePlayerLevel ?? 1;
   const gameTime = state.gameTime ?? 0;
@@ -90,7 +220,6 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
     build?.core[1]?.name ||
     (hasYoumuu ? "Youmuu's" : hasVoltaic ? 'Voltaic' : 'second core');
 
-  // Level power spikes — gate speculative all-ins on hard/burst lanes
   if (level === 1) {
     cues.push({
       id: 'lvl2',
@@ -148,7 +277,6 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
     });
   }
 
-  // Clock-based roam / objective windows
   if (gameTime > 0) {
     if (minutes >= 2 && minutes < 3 && !hasBoots) {
       cues.push({
@@ -213,7 +341,6 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
     }
   }
 
-  // Item power spikes
   if (!hasUmbral && level >= 4) {
     cues.push({
       id: 'rush-umbral',
@@ -257,6 +384,18 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
       id: 'full-build-pressure',
       label: 'Item spike',
       detail: 'Fog picks before objectives — your burst window is now.',
+      urgency: 'spike',
+    });
+  }
+
+  const flashDown = (state.enemyBotSummoners || []).flatMap((l) =>
+    l.spells.filter((s) => s.short === 'Flash' && !s.ready && s.remaining > 0)
+  );
+  if (flashDown.length > 0) {
+    cues.push({
+      id: 'sum-flash',
+      label: 'Flash down',
+      detail: `Enemy ${flashDown.length > 1 ? 'bot' : 'Flash'} ~${formatCd(flashDown[0].remaining)} — free R angles.`,
       urgency: 'spike',
     });
   }

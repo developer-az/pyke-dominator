@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BuildDisplay } from './components/BuildDisplay';
 import { ChampionSelect } from './components/ChampionSelect';
 import { DominanceGauge } from './components/DominanceGauge';
 import { HudFrame } from './components/HudFrame';
-import { calculateBuild, calculateRunes, analyzeMatchup, calculateDominanceFactor } from './logic/pykeLogic';
+import { SummonerTimers } from './components/SummonerTimers';
 import type { Champion, Build, RunePage, MatchupAnalysis, DominanceMetrics } from './logic/pykeLogic';
+import {
+  PROFILES,
+  getProfile,
+  loadStoredProfileId,
+  storeProfileId,
+  profileFromChampionName,
+  type ProfileId,
+} from './logic/profiles';
+import type { OverlayBotSummoner } from './overlay/overlayLogic';
 import { ChromeMark } from './overlay/ChromeMark';
 import { CHROME_COLOR_PRESETS, normalizeChromeColor } from './overlay/chromeTheme';
 
@@ -35,6 +44,16 @@ const App: React.FC = () => {
   const [hudScale, setHudScale] = useState(20);
   const [mapScale, setMapScale] = useState(88);
   const [chromeColor, setChromeColor] = useState('#d4d8de');
+  const [profileId, setProfileId] = useState<ProfileId>(() =>
+    typeof window !== 'undefined' ? loadStoredProfileId() : 'pyke-support'
+  );
+  const [enemyBotSummoners, setEnemyBotSummoners] = useState<OverlayBotSummoner[]>([]);
+  const profile = useMemo(() => getProfile(profileId), [profileId]);
+
+  const handleProfileChange = (id: ProfileId) => {
+    setProfileId(id);
+    storeProfileId(id);
+  };
 
   // Fetch Champions
   useEffect(() => {
@@ -127,11 +146,40 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Track overlay in-game state from pushes (shared channel also used by overlay window)
+  // Track overlay in-game state + pregame summoner intel (shared channel)
   useEffect(() => {
     if (!window.electronAPI?.onOverlayUpdate) return;
     const unsub = window.electronAPI.onOverlayUpdate((payload) => {
-      const data = payload as { inGame?: boolean };
+      const data = payload as {
+        inGame?: boolean;
+        enemyBotSummoners?: OverlayBotSummoner[];
+        profileHint?: ProfileId | null;
+        localPlayer?: { championName?: string } | null;
+      };
+      if (Array.isArray(data.enemyBotSummoners)) {
+        setEnemyBotSummoners(data.enemyBotSummoners);
+      }
+      // Auto-switch profile when live client reports local champion
+      if (data.profileHint === 'yone-mid' || data.profileHint === 'pyke-support') {
+        setProfileId((prev) => {
+          if (prev !== data.profileHint) {
+            storeProfileId(data.profileHint!);
+            return data.profileHint!;
+          }
+          return prev;
+        });
+      } else if (data.localPlayer?.championName) {
+        const matched = profileFromChampionName(data.localPlayer.championName);
+        if (matched) {
+          setProfileId((prev) => {
+            if (prev !== matched.id) {
+              storeProfileId(matched.id);
+              return matched.id;
+            }
+            return prev;
+          });
+        }
+      }
       if (typeof data.inGame === 'boolean') {
         setOverlayInGame(data.inGame);
         // Match ended → clear champ-select / live leftovers so UI is ready for next lobby
@@ -141,6 +189,7 @@ const App: React.FC = () => {
           setRunes(null);
           setAnalysis(null);
           setDominance(null);
+          setEnemyBotSummoners([]);
           setExportStatus('idle');
         }
         wasInGameRef.current = data.inGame;
@@ -186,6 +235,8 @@ const App: React.FC = () => {
             assignedPosition?: string;
             teamPosition?: string;
             position?: string;
+            spell1Id?: number;
+            spell2Id?: number;
           }
 
           interface LCUSession {
@@ -198,6 +249,25 @@ const App: React.FC = () => {
           const theirTeam = sessionData.theirTeam;
           const myTeam = sessionData.myTeam;
           const localPlayerCellId = sessionData.localPlayerCellId;
+
+          // Auto-pick profile from locked-in champion in champ select
+          if (Array.isArray(myTeam) && localPlayerCellId !== undefined) {
+            const me = myTeam.find((m) => m.cellId === localPlayerCellId);
+            if (me?.championId && me.championId !== 0) {
+              const myChamp = champions.find((c) => c.key === String(me.championId));
+              const matched = profileFromChampionName(myChamp?.id || myChamp?.name);
+              if (matched) {
+                setProfileId((prev) => {
+                  if (prev !== matched.id) {
+                    storeProfileId(matched.id);
+                    return matched.id;
+                  }
+                  return prev;
+                });
+              }
+            }
+          }
+
           if (Array.isArray(theirTeam) || Array.isArray(myTeam)) {
             setSelections(prev => {
               const newSelections = { ...prev };
@@ -246,7 +316,7 @@ const App: React.FC = () => {
                 });
               }
 
-              // Ally ADC from myTeam BOTTOM (exclude local Pyke cell)
+              // Ally lanes from myTeam (exclude local player cell)
               if (Array.isArray(myTeam)) {
                 const isAllyNotSelf = (m: TeamMember) =>
                   m.championId !== undefined &&
@@ -268,7 +338,7 @@ const App: React.FC = () => {
                 const adcMember = bottomMember || marksmanFallback;
                 if (adcMember?.championId) {
                   const adcChamp = champions.find(c => c.key === String(adcMember.championId));
-                  if (adcChamp && adcChamp.id !== 'Pyke' && newSelections.YourADC?.id !== adcChamp.id) {
+                  if (adcChamp && newSelections.YourADC?.id !== adcChamp.id) {
                     newSelections.YourADC = adcChamp;
                     hasUpdates = true;
                   }
@@ -280,7 +350,7 @@ const App: React.FC = () => {
                 });
                 if (midMember?.championId) {
                   const midChamp = champions.find(c => c.key === String(midMember.championId));
-                  if (midChamp && midChamp.id !== 'Pyke' && newSelections.YourMid?.id !== midChamp.id) {
+                  if (midChamp && newSelections.YourMid?.id !== midChamp.id) {
                     newSelections.YourMid = midChamp;
                     hasUpdates = true;
                   }
@@ -323,27 +393,28 @@ const App: React.FC = () => {
     };
   }, [lcuConnected, champions, overlayInGame]);
 
-  // Recalculate Build & Analysis
+  // Recalculate Build & Analysis — skip while in-game (overlay owns the hot path)
   useEffect(() => {
-    // Separate enemy team from your ADC / mid
+    if (overlayInGame) return;
+
     const enemyRoles = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
     const enemies = enemyRoles.map(role => selections[role]).filter(c => c !== null) as Champion[];
     const yourADC = selections.YourADC;
     const yourMid = selections.YourMid;
 
     if (enemies.length > 0) {
-      const currentBuild = calculateBuild(enemies, yourADC, yourMid);
+      const currentBuild = profile.calculateBuild(enemies, yourADC, yourMid);
       setBuild(currentBuild);
-      setRunes(calculateRunes(enemies, currentBuild, yourADC, yourMid));
-      setAnalysis(analyzeMatchup(enemies, currentBuild, yourADC, yourMid));
-      setDominance(calculateDominanceFactor(enemies, currentBuild));
+      setRunes(profile.calculateRunes(enemies, currentBuild, yourADC, yourMid));
+      setAnalysis(profile.analyzeMatchup(enemies, currentBuild, yourADC, yourMid));
+      setDominance(profile.calculateDominance(enemies, currentBuild));
     } else {
       setBuild(null);
       setRunes(null);
       setAnalysis(null);
       setDominance(null);
     }
-  }, [selections]);
+  }, [selections, profile, overlayInGame]);
 
   // Helper function to infer role from champion tags when LCU doesn't provide role
   const inferRoleFromChampion = (champion: Champion, currentSelections: { [key: string]: Champion | null }): string | null => {
@@ -426,6 +497,8 @@ const App: React.FC = () => {
           boots: build.boots,
           situational: build.situational,
           buildPath: build.buildPath,
+          championKey: profile.championKey,
+          title: profile.itemSetTitle,
         });
         if (!itemRes?.success) {
           itemOk = false;
@@ -550,8 +623,8 @@ const App: React.FC = () => {
         >
           <div className="flex items-center gap-2 text-xs text-chrome-dim font-semibold">
             <ChromeMark size={12} style={{ color: chromeColor }} />
-            <span className="font-display tracking-[0.22em] uppercase text-chrome-bright">Pyke Dominator</span>
-            <span className="hud-chip hud-accent-blood !py-0.5 !text-[8px]">Hound</span>
+            <span className="font-display tracking-[0.22em] uppercase text-chrome-bright">{profile.brandTitle}</span>
+            <span className="hud-chip hud-accent-blood !py-0.5 !text-[8px]">{profile.shortLabel}</span>
           </div>
           <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <button
@@ -594,22 +667,45 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4 min-w-0">
               <ChromeMark className="shrink-0" size={28} style={{ color: chromeColor }} />
               <div className="min-w-0">
-                <h1 className="hud-brand text-3xl md:text-5xl truncate">Pyke Dominator</h1>
+                <h1 className="hud-brand text-3xl md:text-5xl truncate">{profile.brandTitle}</h1>
                 <p className="mt-1 font-mono text-[10px] tracking-[0.28em] uppercase text-chrome-dim">
-                  Gothic chrome · tactical loadout
+                  {profile.label} · tactical loadout
                 </p>
               </div>
               <span className="hud-chip text-chrome-dim hidden sm:inline-flex" style={{ ['--accent' as string]: '#8a919c' }}>
-                V1.3.0
+                V1.4.0
               </span>
             </div>
-            <div
-              className={`hud-chip flex items-center gap-2 shrink-0 ${
-                lcuConnected ? 'hud-accent-green !text-chrome-bright' : 'text-chrome-dim'
-              }`}
-            >
-              <span className={`hud-status-dot ${lcuConnected ? 'text-chrome-bright' : 'text-chrome-dim'}`} />
-              {lcuConnected ? 'Live' : 'Demo'}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex rounded border border-chrome-silver/30 overflow-hidden" role="group" aria-label="Champion profile">
+                {PROFILES.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleProfileChange(p.id)}
+                    className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                      profileId === p.id
+                        ? 'bg-chrome-silver/20 text-chrome-bright'
+                        : 'text-chrome-dim hover:text-chrome-bright hover:bg-white/5'
+                    }`}
+                    title={`Switch to ${p.label}`}
+                  >
+                    {p.shortLabel}
+                  </button>
+                ))}
+              </div>
+              <div
+                className={`hud-chip flex items-center gap-2 ${
+                  overlayInGame
+                    ? 'hud-accent-blood !text-chrome-bright'
+                    : lcuConnected
+                      ? 'hud-accent-green !text-chrome-bright'
+                      : 'text-chrome-dim'
+                }`}
+              >
+                <span className={`hud-status-dot ${overlayInGame || lcuConnected ? 'text-chrome-bright' : 'text-chrome-dim'}`} />
+                {overlayInGame ? 'In Match · Idle' : lcuConnected ? 'Live' : 'Demo'}
+              </div>
             </div>
           </div>
 
@@ -694,6 +790,29 @@ const App: React.FC = () => {
           )}
         </header>
 
+        {/* In-match: main UI goes static — overlay owns CPU; avoid rebuild churn */}
+        {overlayInGame ? (
+          <HudFrame accent="steel" label="Match Live" className="p-8 animate-fade-in">
+            <div className="flex flex-col items-center text-center gap-4 max-w-lg mx-auto">
+              <ChromeMark size={40} className="opacity-40" style={{ color: chromeColor }} />
+              <h2 className="hud-heading text-2xl text-chrome-bright">Client Idle · Overlay Active</h2>
+              <p className="text-sm text-chrome-dim font-mono tracking-wide">
+                Match is live — LCU polling and loadout recalculation are paused so League keeps the CPU.
+                Use the in-game overlay for cues and bot-lane summoner timers.
+              </p>
+              {enemyBotSummoners.length > 0 && (
+                <div className="w-full text-left mt-2">
+                  <SummonerTimers lanes={enemyBotSummoners} accentColor={chromeColor} />
+                </div>
+              )}
+              {analysis && (
+                <p className="text-xs text-chrome-dim/80 border-t border-white/10 pt-3 mt-2">
+                  Last plan: <span className="text-chrome-bright">{analysis.title}</span> · {profile.label}
+                </p>
+              )}
+            </div>
+          </HudFrame>
+        ) : (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 relative">
           {/* Left Panel: Enemy Selection */}
           <div className="xl:col-span-3 space-y-6 animate-slide-in relative" style={{ zIndex: 100 }}>
@@ -701,6 +820,9 @@ const App: React.FC = () => {
               <h2 className="hud-heading text-xl text-chrome-bright mb-5">
                 <ChromeMark size={14} style={{ color: chromeColor }} /> Enemy Squad
               </h2>
+              <p className="text-[9px] font-mono text-chrome-dim/70 mb-3 tracking-wide">
+                Auto-fills from champ select when Live.
+              </p>
               <ChampionSelect
                 champions={champions}
                 selections={selections}
@@ -710,6 +832,10 @@ const App: React.FC = () => {
               />
             </HudFrame>
 
+            {enemyBotSummoners.length > 0 && (
+              <SummonerTimers lanes={enemyBotSummoners} accentColor={chromeColor} />
+            )}
+
             {/* Dominance Gauge */}
             {dominance && (
               <div className="animate-slide-in" style={{ animationDelay: '0.1s' }}>
@@ -717,7 +843,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Ally ADC + Mid (mid mobility feeds roam scoring) */}
+            {/* Ally lanes relevant to active profile */}
             <HudFrame accent="cyan" label="Bond" className="p-5">
               <h2 className="hud-heading text-xl text-chrome-bright mb-5">
                 <ChromeMark size={14} className="text-chrome-dim" /> Ally Lanes
@@ -726,7 +852,7 @@ const App: React.FC = () => {
                 champions={champions}
                 selections={selections}
                 onSelectionChange={handleSelectionChange}
-                roles={['YourADC', 'YourMid']}
+                roles={profile.focusAllies}
                 layout="stack"
               />
             </HudFrame>
@@ -750,13 +876,14 @@ const App: React.FC = () => {
                   <ChromeMark size={48} className="mb-6 opacity-30" style={{ color: chromeColor }} />
                   <p className="hud-heading text-2xl text-chrome-dim">Awaiting Data</p>
                   <p className="text-sm mt-3 text-chrome-dim/70 font-mono border-t border-white/10 pt-3 tracking-wider">
-                    Select enemy champions to initialize tactical analysis.
+                    Select enemies (or enter champ select) for {profile.label} analysis.
                   </p>
                 </div>
               </HudFrame>
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

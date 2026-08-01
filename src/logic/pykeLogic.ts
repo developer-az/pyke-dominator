@@ -937,6 +937,8 @@ export const analyzeMatchup = (
             botLaneMatchup?.enemySupport?.id === 'Mel'
                 ? 'Mel: never eat root + full combo; side-step, then convert the wave into mid.'
                 : 'Track their summoners — Flash-down windows are free R angles.',
+            // High-elo: R is execute-only; R-E-recast-R chains multi-kills (LoL Sensei)
+            'R is an execute, not a gap-closer — wait for the white X. Practice R→E→recast R to chain resets.',
         ];
     } else if (squishies.length >= 3 && tanks.length <= 1) {
         analysis.title = 'ASSASSIN MODE: KILL ON SIGHT';
@@ -947,6 +949,9 @@ export const analyzeMatchup = (
             'Contest level 1–2 for the first all-in.',
             'Level 2 Q→E is your highest-percentage opener.',
             'If bot is stable, chain mid camps — soft mids are free gold.',
+            // Expert: hold charged Q in fog — channel telegraph is free info for them
+            'Charge Q from fog, not in vision — the channel animation tells them the hook is coming.',
+            'Hook the support on CD when soft — they die faster than the ADC and fund your roam timer.',
         ];
     } else if (tanks.length >= 2 || ccHeavy.length >= 2) {
         analysis.title = 'MAP DISRUPTOR';
@@ -964,6 +969,8 @@ export const analyzeMatchup = (
             'Q peels divers off your ADC — that wins teamfights.',
             'R executes leftovers after the frontline is occupied.',
             'Crash bot → leave for mid/jg soft targets.',
+            // Expert roam timing: never leave on a slow push
+            'Roam only after crash / freeze — leaving on a slow push donates plates and your ADC\'s wave.',
         ];
     } else if (pokeHeavy.length >= 1 || ctx.burstBot) {
         analysis.title = 'PUNISH WINDOWS';
@@ -974,8 +981,17 @@ export const analyzeMatchup = (
             'Bushes + grey health keep you in kill range.',
             'Missed poke spell = immediate engage.',
             'Hexflash (if taken) is elite in this pattern.',
+            // Passive regen only out of vision — W into brush between trades
+            'W into brush between trades — passive grey-health regen requires fog, not standing in lane.',
         ];
     }
+
+    // Universal high-elo Pyke quirks (always surface 1–2)
+    const expertQuirks = [
+        'Post-6: roam mid when R is up and bot wave is crashed — not during a slow push (LoL Sensei).',
+        'Mid-game leave bot: your job is fog picks + objectives; ADC scales while you hunt.',
+    ];
+    analysis.tips = [...analysis.tips, ...expertQuirks].slice(0, 7);
 
     // Roam advice — always mid-mobility aware
     const roamParts: string[] = [];

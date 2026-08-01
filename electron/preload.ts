@@ -4,8 +4,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     connectLCU: () => ipcRenderer.invoke('lcu-connect'),
     requestLCU: (method: string, endpoint: string, body?: unknown) => ipcRenderer.invoke('lcu-request', method, endpoint, body),
     onUpdate: (callback: (value: unknown) => void) => ipcRenderer.on('main-process-message', (_event, value) => callback(value)),
-    exportItemSet: (build: { starter: Array<{ id: string }>; core: Array<{ id: string }>; boots: { id: string }; situational: Array<{ id: string }>; buildPath: Array<{ id: string }> }) =>
-        ipcRenderer.invoke('lcu-export-item-set', build),
+    exportItemSet: (build: {
+        starter: Array<{ id: string }>;
+        core: Array<{ id: string }>;
+        boots: { id: string };
+        situational: Array<{ id: string }>;
+        buildPath: Array<{ id: string }>;
+        championKey?: number;
+        title?: string;
+    }) => ipcRenderer.invoke('lcu-export-item-set', build),
     exportRunePage: (runePage: {
         name: string;
         primaryStyleId: number;

@@ -10,6 +10,14 @@ import {
     syncScalesFromLeague,
     keepOverlayOnTop,
 } from './overlay-window';
+import {
+    ingestChampSelectTeam,
+    ingestLiveEvents,
+    ingestLivePlayers,
+    resetSummonerTracker,
+    serializeSummoners,
+    summonerFingerprint,
+} from './summoner-tracker';
 
 /** Gameflow phases where an active match (including Practice Tool) is running. */
 const IN_GAME_PHASES = new Set(['InProgress', 'GameStart']);
@@ -26,8 +34,10 @@ const POST_GAME_PHASES = new Set([
     'None',
 ]);
 
+/** Lobby / champ-select cadence — keep light so LCU stays responsive. */
 const POLL_IDLE_MS = 2000;
-const POLL_INGAME_MS = 3000;
+/** In-game: overlay owns the hot path; slower ticks = less CPU vs League. */
+const POLL_INGAME_MS = 4000;
 
 export interface CachedEnemy {
     championId: number;
@@ -83,7 +93,17 @@ async function cacheChampSelectEnemies(): Promise<void> {
         const session = await makeLCURequest('GET', '/lol-champ-select/v1/session');
         if (!session || typeof session !== 'object') return;
 
-        const theirTeam = (session as { theirTeam?: Array<{ championId?: number; championName?: string; assignedPosition?: string }> }).theirTeam;
+        const theirTeam = (session as {
+            theirTeam?: Array<{
+                championId?: number;
+                championName?: string;
+                assignedPosition?: string;
+                teamPosition?: string;
+                position?: string;
+                spell1Id?: number;
+                spell2Id?: number;
+            }>;
+        }).theirTeam;
         if (!Array.isArray(theirTeam)) return;
 
         const enemies: CachedEnemy[] = [];
@@ -99,6 +119,8 @@ async function cacheChampSelectEnemies(): Promise<void> {
         if (enemies.length > 0) {
             lastChampSelectEnemies = enemies;
         }
+        // Auto-fill enemy bot summoner intel while sitting in client
+        ingestChampSelectTeam(theirTeam);
     } catch {
         // Not in champ select
     }
@@ -106,21 +128,33 @@ async function cacheChampSelectEnemies(): Promise<void> {
 
 function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: string | null) {
     const localPlayer = live ? findLocalPlayer(live) : null;
-    // Unknown until live client reports a champion — treat as Pyke-friendly for this app
-    const isPyke = localPlayer
-        ? localPlayer.championName.toLowerCase() === 'pyke'
-        : true;
+    const localName = localPlayer?.championName?.toLowerCase() || '';
+    const isPyke = localPlayer ? localName === 'pyke' : true;
+    const isYone = localPlayer ? localName === 'yone' : false;
+    const profileHint = isYone ? 'yone-mid' : isPyke ? 'pyke-support' : null;
 
-    const enemies = live?.allPlayers
-        ?.filter((p) => localPlayer && p.team !== localPlayer.team)
-        .map((p) => ({
-            championName: p.championName,
-            level: p.level,
-            position: p.position,
-            isDead: p.isDead,
-            items: p.items?.map((i) => i.displayName) || [],
-            scores: p.scores,
-        })) || [];
+    const enemyPlayers =
+        live?.allPlayers?.filter((p) => localPlayer && p.team !== localPlayer.team) || [];
+
+    const enemies = enemyPlayers.map((p) => ({
+        championName: p.championName,
+        level: p.level,
+        position: p.position,
+        isDead: p.isDead,
+        items: p.items?.map((i) => i.displayName) || [],
+        scores: p.scores,
+        summonerSpells: p.summonerSpells,
+    }));
+
+    // Keep bot-lane summoner timers current from live positions + kill events
+    ingestLivePlayers(enemies);
+    const nameToChampion = new Map<string, string>();
+    for (const p of live?.allPlayers || []) {
+        if (p.summonerName) nameToChampion.set(p.summonerName, p.championName);
+        if (p.riotIdGameName) nameToChampion.set(p.riotIdGameName, p.championName);
+        if (p.riotId) nameToChampion.set(p.riotId, p.championName);
+    }
+    ingestLiveEvents(live?.events?.Events, nameToChampion);
 
     const allies = live?.allPlayers
         ?.filter((p) => localPlayer && p.team === localPlayer.team && p.summonerName !== localPlayer.summonerName)
@@ -150,9 +184,12 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
               }
             : null,
         isPyke,
+        isYone,
+        profileHint,
         enemies,
         allies,
         cachedChampSelectEnemies: lastChampSelectEnemies,
+        enemyBotSummoners: serializeSummoners(),
         activePlayerLevel: live?.activePlayer?.level ?? localPlayer?.level ?? 0,
         timestamp: Date.now(),
     };
@@ -176,6 +213,8 @@ function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): st
         itemKey,
         enemyKey,
         payload.isPyke ? 1 : 0,
+        payload.profileHint || '',
+        summonerFingerprint(),
         (payload.cachedChampSelectEnemies || []).map((e) => e.championId).join(','),
     ].join('~');
 }
@@ -183,6 +222,7 @@ function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): st
 function resetMatchCaches(): void {
     lastChampSelectEnemies = [];
     lastOverlayFingerprint = '';
+    resetSummonerTracker();
 }
 
 function setPollCadence(ms: number): void {
@@ -231,15 +271,23 @@ async function tick(): Promise<void> {
             }
         }
 
-        // Cache champ select only while not in a live match
-        if (!inGame) {
+        const phaseInGame = phase ? IN_GAME_PHASES.has(phase) : false;
+        const phaseIsPostGame = phase ? POST_GAME_PHASES.has(phase) : false;
+
+        // Champ-select enemy + summoner cache only in lobby — never while match is live
+        if (!inGame && !phaseInGame) {
             await cacheChampSelectEnemies();
         }
 
-        const live = await fetchLiveClientData();
+        // Live client is the in-game hot path. Skip the HTTPS hit entirely when we
+        // already know we are in a post-game / lobby phase (saves sockets + CPU).
+        let live: LiveClientAllGameData | null = null;
+        if (phaseInGame || phase === null || inGame) {
+            if (!phaseIsPostGame || inGame) {
+                live = await fetchLiveClientData();
+            }
+        }
         const liveAvailable = live !== null;
-        const phaseInGame = phase ? IN_GAME_PHASES.has(phase) : false;
-        const phaseIsPostGame = phase ? POST_GAME_PHASES.has(phase) : false;
 
         // Prefer gameflow when known: EndOfGame / Lobby / ChampSelect must exit even if
         // live client still serves stale /allgamedata for a while.
@@ -270,6 +318,21 @@ async function tick(): Promise<void> {
             }
         } else if (inGame) {
             endGameSession();
+        } else if (!inGame) {
+            // Pregame: push bot summoner intel to main UI occasionally (no overlay window)
+            const summons = serializeSummoners();
+            if (summons.length > 0) {
+                const fp = `pre:${summonerFingerprint()}`;
+                if (fp !== lastOverlayFingerprint) {
+                    lastOverlayFingerprint = fp;
+                    sendOverlayUpdate({
+                        inGame: false,
+                        enemyBotSummoners: summons,
+                        cachedChampSelectEnemies: lastChampSelectEnemies,
+                        timestamp: Date.now(),
+                    });
+                }
+            }
         }
     } finally {
         tickInFlight = false;

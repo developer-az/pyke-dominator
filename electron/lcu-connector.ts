@@ -113,6 +113,10 @@ export interface ExportBuildPayload {
     boots: { id: string };
     situational: Array<{ id: string }>;
     buildPath: Array<{ id: string }>;
+    /** LCU champion key (Pyke 555, Yone 777). Defaults to Pyke. */
+    championKey?: number;
+    /** Item-set title shown in shop. */
+    title?: string;
 }
 
 /**
@@ -134,7 +138,8 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
     }
 
     const summonerId = currentSummoner.summonerId;
-    const pykeChampionId = 555;
+    const championKey = build.championKey ?? 555;
+    const setTitle = build.title || 'Pyke Dominator';
 
     const existing = await makeLCURequest(
         'GET',
@@ -142,7 +147,7 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
     ) as LCUItemSetsCollection | null;
 
     const existingSets = Array.isArray(existing?.itemSets) ? existing!.itemSets! : [];
-    const kept = existingSets.filter((s) => s.title !== 'Pyke Dominator');
+    const kept = existingSets.filter((s) => s.title !== setTitle && s.title !== 'Pyke Dominator' && s.title !== 'Yone Mid Dominator');
 
     const blocks: ItemSetBlock[] = [];
     if (build.starter.length > 0) {
@@ -177,14 +182,14 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
     }
 
     const newSet: LCUItemSetPage = {
-        title: 'Pyke Dominator',
+        title: setTitle,
         type: 'custom',
         map: 'any',
         mode: 'any',
         priority: false,
         sortrank: 0,
         startedFrom: 'BLANK',
-        associatedChampions: [pykeChampionId],
+        associatedChampions: [championKey],
         associatedMaps: [11, 12],
         preferredItemSlots: [],
         blocks,

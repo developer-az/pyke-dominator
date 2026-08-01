@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  calculateBuild,
-  calculateRunes,
-  analyzeMatchup,
   type Champion,
   type Build,
   type RunePage,
   type MatchupAnalysis,
 } from '../logic/pykeLogic';
+import { getProfile, loadStoredProfileId, type ProfileId } from '../logic/profiles';
 import {
   buildInGameCues,
   formatGameTime,
@@ -15,6 +13,7 @@ import {
   resolveAllyMidName,
   type OverlayState,
 } from './overlayLogic';
+import { SummonerTimers } from '../components/SummonerTimers';
 import { ChromeMark } from './ChromeMark';
 import { ChromeGameHud } from './ChromeGameHud';
 
@@ -57,8 +56,12 @@ export const OverlayApp: React.FC = () => {
   const [chromeColor, setChromeColor] = useState('#d4d8de');
   const [collapsed, setCollapsed] = useState(false);
   const [calibration, setCalibration] = useState<OverlayCalibration>({ ability: emptyCalibration(), minimap: emptyCalibration() });
+  const [profileId, setProfileId] = useState<ProfileId>(() =>
+    typeof window !== 'undefined' ? loadStoredProfileId() : 'pyke-support'
+  );
+  const profile = useMemo(() => getProfile(profileId), [profileId]);
 
-  // Load champion catalog for pykeLogic
+  // Load champion catalog for profile logic
   useEffect(() => {
     fetch('https://ddragon.leagueoflegends.com/api/versions.json')
       .then((res) => res.json())
@@ -92,7 +95,15 @@ export const OverlayApp: React.FC = () => {
     if (!window.electronAPI?.onOverlayUpdate) return;
 
     const unsubUpdate = window.electronAPI.onOverlayUpdate((payload) => {
-      setState(payload as OverlayState);
+      const next = payload as OverlayState;
+      setState(next);
+      if (next.profileHint === 'yone-mid' || next.profileHint === 'pyke-support') {
+        setProfileId(next.profileHint);
+      } else if (next.isYone) {
+        setProfileId('yone-mid');
+      } else if (next.isPyke) {
+        setProfileId('pyke-support');
+      }
     });
 
     const unsubMeta = window.electronAPI.onOverlayMeta?.((payload) => {
@@ -202,30 +213,30 @@ export const OverlayApp: React.FC = () => {
   const build: Build | null = useMemo(
     () =>
       enemyChampions.length > 0
-        ? calculateBuild(enemyChampions, yourAdcChampion, yourMidChampion)
+        ? profile.calculateBuild(enemyChampions, yourAdcChampion, yourMidChampion)
         : null,
-    [enemyChampions, yourAdcChampion, yourMidChampion]
+    [enemyChampions, yourAdcChampion, yourMidChampion, profile]
   );
 
   const runes: RunePage | null = useMemo(
     () =>
       enemyChampions.length > 0 && build
-        ? calculateRunes(enemyChampions, build, yourAdcChampion, yourMidChampion)
+        ? profile.calculateRunes(enemyChampions, build, yourAdcChampion, yourMidChampion)
         : null,
-    [enemyChampions, build, yourAdcChampion, yourMidChampion]
+    [enemyChampions, build, yourAdcChampion, yourMidChampion, profile]
   );
 
   const analysis: MatchupAnalysis | null = useMemo(
     () =>
       enemyChampions.length > 0 && build
-        ? analyzeMatchup(enemyChampions, build, yourAdcChampion, yourMidChampion)
+        ? profile.analyzeMatchup(enemyChampions, build, yourAdcChampion, yourMidChampion)
         : null,
-    [enemyChampions, build, yourAdcChampion, yourMidChampion]
+    [enemyChampions, build, yourAdcChampion, yourMidChampion, profile]
   );
 
   const cues = useMemo(
-    () => buildInGameCues(state, { analysis, build }),
-    [state, analysis, build]
+    () => buildInGameCues(state, { analysis, build, profileId }),
+    [state, analysis, build, profileId]
   );
 
   const handleHide = () => {
@@ -271,11 +282,18 @@ export const OverlayApp: React.FC = () => {
     );
   }
 
-  const isPyke = state.isPyke !== false;
+  const profileMatchesLocal =
+    !state.localPlayer?.championName ||
+    state.localPlayer.championName.toLowerCase() === profile.championId.toLowerCase();
 
   const gameModeLabel = state.gameMode === 'PRACTICETOOL'
     ? 'Practice Tool'
     : state.gameMode || 'In Game';
+
+  const runeSummary =
+    profileId === 'yone-mid'
+      ? `${runes?.selectedPerkIds[0] === 8021 ? 'Fleet' : 'Lethal Tempo'} · Resolve`
+      : `Hail of Blades · ${runes?.subStyleId === 8400 ? 'Resolve' : 'Precision'}`;
 
   return (
     <div
@@ -337,10 +355,10 @@ export const OverlayApp: React.FC = () => {
               <ChromeMark className="hud-chrome-mark" size={13} />
               <div className="min-w-0">
                 <div className="hud-chrome-title truncate">
-                  Pyke Dominator
+                  {profile.brandTitle}
                 </div>
                 <div className="hud-chrome-meta">
-                  {gameModeLabel}
+                  {profile.shortLabel} · {gameModeLabel}
                   {typeof state.gameTime === 'number' && state.gameTime > 0
                     ? ` · ${formatGameTime(state.gameTime)}`
                     : ''}
@@ -363,64 +381,67 @@ export const OverlayApp: React.FC = () => {
 
           {!collapsed && (
             <div className="relative z-10 p-2.5 space-y-2 max-h-[60vh] overflow-y-auto">
-              {!isPyke ? (
+              {!profileMatchesLocal ? (
                 <div className="hud-chrome-cue hud-chrome-cue--warn text-[11px]">
-                  Local player is <strong>{state.localPlayer?.championName || 'unknown'}</strong>, not Pyke.
+                  Playing <strong>{state.localPlayer?.championName || 'unknown'}</strong> —
+                  switch profile in the main client for full cues ({profile.label} loaded).
                 </div>
-              ) : (
-                <>
-                  {cues.map((cue) => (
-                    <div
-                      key={cue.id}
-                      className={`hud-chrome-cue hud-chrome-cue--${cue.urgency}`}
-                    >
-                      <div className="font-semibold uppercase tracking-[0.12em] text-[9px] opacity-90">
-                        {cue.label}
-                      </div>
-                      <div className="mt-0.5 opacity-85 text-[11px] leading-snug">{cue.detail}</div>
-                    </div>
+              ) : null}
+
+              {cues.map((cue) => (
+                <div
+                  key={cue.id}
+                  className={`hud-chrome-cue hud-chrome-cue--${cue.urgency}`}
+                >
+                  <div className="font-semibold uppercase tracking-[0.12em] text-[9px] opacity-90">
+                    {cue.label}
+                  </div>
+                  <div className="mt-0.5 opacity-85 text-[11px] leading-snug">{cue.detail}</div>
+                </div>
+              ))}
+
+              {state.enemyBotSummoners && state.enemyBotSummoners.length > 0 && (
+                <SummonerTimers lanes={state.enemyBotSummoners} compact />
+              )}
+
+              {build && (
+                <div className="flex flex-wrap gap-1 items-center">
+                  {build.core.map((item) => (
+                    <span key={`core-${item.id}`} className="hud-chip !text-[10px]" title={item.reason}>
+                      {item.name}
+                    </span>
                   ))}
+                  <span className="hud-chip !text-[10px] !text-[#aeb4be]" title={build.boots.reason}>
+                    {build.boots.name}
+                  </span>
+                </div>
+              )}
 
-                  {build && (
-                    <div className="flex flex-wrap gap-1 items-center">
-                      {build.core.map((item) => (
-                        <span key={`core-${item.id}`} className="hud-chip !text-[10px]" title={item.reason}>
-                          {item.name}
-                        </span>
-                      ))}
-                      <span className="hud-chip !text-[10px] !text-[#aeb4be]" title={build.boots.reason}>
-                        {build.boots.name}
+              {runes && (
+                <p className="text-[10px] text-[#8a919c] font-mono tracking-wide">
+                  {runeSummary}
+                </p>
+              )}
+
+              {analysis && (
+                <div className="border-t border-white/10 pt-1.5">
+                  <div className="text-[11px] font-semibold text-[#e4e6ea]">
+                    {analysis.aggressionLevel} · {analysis.title}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {analysis.primaryTargets.slice(0, 2).map((t) => (
+                      <span key={t} className="hud-chip hud-accent-blood !text-[10px]">
+                        Prey {t}
                       </span>
-                    </div>
-                  )}
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                  {runes && (
-                    <p className="text-[10px] text-[#8a919c] font-mono tracking-wide">
-                      Hail of Blades · {runes.subStyleId === 8400 ? 'Resolve' : 'Precision'}
-                    </p>
-                  )}
-
-                  {analysis && (
-                    <div className="border-t border-white/10 pt-1.5">
-                      <div className="text-[11px] font-semibold text-[#e4e6ea]">
-                        {analysis.aggressionLevel} · {analysis.title}
-                      </div>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {analysis.primaryTargets.slice(0, 2).map((t) => (
-                          <span key={t} className="hud-chip hud-accent-blood !text-[10px]">
-                            Prey {t}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {!build && (
-                    <p className="text-[11px] text-[#6b7280] font-mono tracking-wide">
-                      Waiting for enemy data…
-                    </p>
-                  )}
-                </>
+              {!build && (
+                <p className="text-[11px] text-[#6b7280] font-mono tracking-wide">
+                  Waiting for enemy data…
+                </p>
               )}
             </div>
           )}
