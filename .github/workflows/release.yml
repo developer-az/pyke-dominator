@@ -64,7 +64,7 @@ jobs:
         with:
           artifacts: "release/*.exe,release/*.exe.blockmap"
           token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
           draft: false
           prerelease: false
           generateReleaseNotes: true
-
