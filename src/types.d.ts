@@ -1,15 +1,49 @@
 export { };
 
 declare global {
+    interface FrameCalibration {
+        dx: number;
+        dy: number;
+        dw: number;
+        dh: number;
+    }
+
+    interface OverlayCalibration {
+        ability: FrameCalibration;
+        minimap: FrameCalibration;
+    }
+
     interface Window {
         electronAPI?: {
             connectLCU: () => Promise<{ success: boolean; credentials?: { port: string; token: string; protocol: string }; error?: string }>;
             requestLCU: (method: string, endpoint: string, body?: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>;
             exportItemSet: (build: { starter: Array<{ id: string }>; core: Array<{ id: string }>; boots: { id: string }; situational: Array<{ id: string }>; buildPath: Array<{ id: string }> }) => Promise<{ success: boolean; error?: string }>;
+            exportRunePage: (runePage: {
+                name: string;
+                primaryStyleId: number;
+                subStyleId: number;
+                selectedPerkIds: number[];
+                current?: boolean;
+            }) => Promise<{ success: boolean; error?: string }>;
             onUpdate: (callback: (value: unknown) => void) => void;
             windowMinimize: () => Promise<void>;
             windowMaximize: () => Promise<void>;
             windowClose: () => Promise<void>;
+
+            getLiveClientData: () => Promise<{ success: boolean; data?: unknown; error?: string }>;
+            toggleOverlay: () => Promise<{ success: boolean; visible: boolean }>;
+            setOverlayVisible: (visible: boolean) => Promise<{ success: boolean; visible: boolean }>;
+            toggleOverlayClickThrough: () => Promise<{ success: boolean; clickThrough: boolean }>;
+            setOverlayHudScale: (scale: number) => Promise<{ success: boolean; hudScale: number }>;
+            setOverlayMapScale: (scale: number) => Promise<{ success: boolean; mapScale: number }>;
+            setOverlayChromeColor: (color: string) => Promise<{ success: boolean; chromeColor: string }>;
+            syncLeagueScales: () => Promise<{ success: boolean; hudScale: number; mapScale: number; source?: string }>;
+            adjustOverlayCalibration: (target: 'ability' | 'minimap', field: 'dx' | 'dy' | 'dw' | 'dh', delta: number) => Promise<{ success: boolean; calibration: OverlayCalibration }>;
+            resetOverlayCalibration: () => Promise<{ success: boolean; calibration: OverlayCalibration }>;
+            getOverlayStatus: () => Promise<{ success: boolean; visible: boolean; clickThrough: boolean; inGame: boolean; hudScale: number; mapScale?: number; chromeColor?: string; calibration?: OverlayCalibration }>;
+            onOverlayUpdate: (callback: (payload: unknown) => void) => (() => void) | void;
+            onOverlayMeta: (callback: (payload: unknown) => void) => (() => void) | void;
+            onOverlayVisibilityChanged: (callback: (payload: { visible: boolean }) => void) => (() => void) | void;
         };
     }
 }

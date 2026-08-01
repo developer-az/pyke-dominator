@@ -7,18 +7,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        'pyke-green': '#00ff9d',
-        'pyke-green-dim': '#00cc7d',
-        'pyke-dark': '#050a0e', // Obsidian
-        'pyke-dark-light': '#0f1923', // Lighter Obsidian
-        'pyke-accent': '#1e2d3b',
-        'blood-red': '#ff4d4d',
-        'gold': '#ffd700',
-        'gold-dim': '#c5a000',
-        'neon-blue': '#00f3ff',
+        // Chrome Hearts silver (legacy pyke-green keys remapped for existing classNames)
+        'pyke-green': '#d4d8de',
+        'pyke-green-dim': '#8a919c',
+        'pyke-dark': '#070708',
+        'pyke-dark-light': '#121214',
+        'pyke-accent': '#1c1c20',
+        'blood-red': '#9b1c2e',
+        'gold': '#e8eaee',
+        'gold-dim': '#9aa1ab',
+        'neon-blue': '#aeb4be',
+        'chrome-silver': '#d4d8de',
+        'chrome-bright': '#f2f4f7',
+        'chrome-dim': '#8a919c',
+        'chrome-ink': '#070708',
+        'chrome-blood': '#9b1c2e',
       },
       fontFamily: {
-        'display': ['Beaufort', 'serif'], // LoL style font if available, fallback to serif
+        'display': ['Cinzel', 'Times New Roman', 'serif'],
+        'sans': ['Syne', 'Segoe UI', 'sans-serif'],
+        'mono': ['IBM Plex Mono', 'ui-monospace', 'monospace'],
       }
     },
   },

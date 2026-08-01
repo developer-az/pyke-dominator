@@ -1,5 +1,6 @@
 import React from 'react';
 import type { DominanceMetrics } from '../logic/pykeLogic';
+import { HudFrame } from './HudFrame';
 
 interface DominanceGaugeProps {
     metrics: DominanceMetrics;
@@ -11,32 +12,33 @@ export const DominanceGauge: React.FC<DominanceGaugeProps> = ({ metrics }) => {
     // Color logic based on grade
     const getGradeColor = (g: string) => {
         switch (g) {
-            case 'S+': return 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]';
-            case 'S': return 'text-pyke-green drop-shadow-[0_0_10px_rgba(0,255,157,0.6)]';
-            case 'A': return 'text-emerald-400';
-            case 'B': return 'text-blue-400';
+            case 'S+': return 'text-chrome-bright drop-shadow-[0_0_10px_rgba(242,244,247,0.45)]';
+            case 'S': return 'text-chrome-silver drop-shadow-[0_0_10px_rgba(212,216,222,0.35)]';
+            case 'A': return 'text-chrome-dim';
+            case 'B': return 'text-slate-400';
             case 'C': return 'text-orange-400';
-            case 'D': return 'text-red-500';
+            case 'D': return 'text-chrome-blood';
             default: return 'text-slate-400';
         }
     };
 
     const getBarColor = (val: number) => {
-        if (val >= 80) return 'bg-pyke-green shadow-[0_0_10px_rgba(0,255,157,0.4)]';
-        if (val >= 60) return 'bg-emerald-500';
-        if (val >= 40) return 'bg-yellow-500';
-        return 'bg-red-500';
+        if (val >= 80) return 'bg-chrome-silver shadow-[0_0_10px_rgba(242,244,247,0.25)]';
+        if (val >= 60) return 'bg-chrome-dim';
+        if (val >= 40) return 'bg-yellow-600';
+        return 'bg-chrome-blood';
     };
 
+    const accent = grade === 'S+' || grade === 'S' ? 'green' : grade === 'D' || grade === 'C' ? 'blood' : 'steel';
+
     return (
-        <div className="bg-slate-900/80 p-6 rounded-xl border border-slate-800/80 backdrop-blur-md shadow-xl relative overflow-hidden group hover:border-pyke-green/30 transition-all duration-500">
-            {/* Background Pulse Effect */}
-            <div className={`absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity duration-700 pointer-events-none bg-gradient-to-br ${grade === 'S+' || grade === 'S' ? 'from-pyke-green to-transparent' : 'from-slate-700 to-transparent'}`}></div>
+        <HudFrame accent={accent} label="Threat Index" className="p-6 hud-scanlines group">
+            <div className={`absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity duration-700 pointer-events-none bg-gradient-to-br ${grade === 'S+' || grade === 'S' ? 'from-chrome-silver to-transparent' : 'from-slate-700 to-transparent'}`}></div>
 
             <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Dominance Factor</h3>
+                        <h3 className="text-[10px] font-mono text-slate-400 uppercase tracking-[0.22em] mb-1">Dominance Factor</h3>
                         <h2 className={`text-2xl font-display font-bold tracking-wider ${getGradeColor(grade)}`}>
                             {title}
                         </h2>
@@ -45,11 +47,11 @@ export const DominanceGauge: React.FC<DominanceGaugeProps> = ({ metrics }) => {
                         <div className={`text-5xl font-display font-black ${getGradeColor(grade)}`}>
                             {grade}
                         </div>
-                        <div className="text-xs text-slate-500 font-mono mt-1">SCORE: {score}/100</div>
+                        <div className="text-xs text-slate-500 font-mono mt-1 tracking-widest">SCORE {score}/100</div>
                     </div>
                 </div>
 
-                <p className="text-slate-300 text-sm mb-6 leading-relaxed border-l-2 border-slate-700 pl-3 italic">
+                <p className="text-slate-300 text-sm mb-6 leading-relaxed border-l-2 border-chrome-silver/40 pl-3 italic">
                     "{summary}"
                 </p>
 
@@ -89,6 +91,6 @@ export const DominanceGauge: React.FC<DominanceGaugeProps> = ({ metrics }) => {
                     </div>
                 </div>
             </div>
-        </div>
+        </HudFrame>
     );
 };

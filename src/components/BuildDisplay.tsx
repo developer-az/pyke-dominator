@@ -1,6 +1,8 @@
 import React from 'react';
 import type { Build, RunePage, Item, MatchupAnalysis } from '../logic/pykeLogic';
 import { getRuneIconUrl } from '../data/runeService';
+import { HudFrame } from './HudFrame';
+import { ChromeMark } from '../overlay/ChromeMark';
 
 interface Props {
     build: Build;
@@ -9,6 +11,7 @@ interface Props {
     onExport: () => void;
     canExport: boolean;
     exportStatus: 'idle' | 'success' | 'error';
+    accentColor?: string;
 }
 
 const ItemIcon: React.FC<{ item: Item; size?: string }> = ({ item, size = "w-12 h-12" }) => (
@@ -16,22 +19,19 @@ const ItemIcon: React.FC<{ item: Item; size?: string }> = ({ item, size = "w-12 
         <img
             src={`https://ddragon.leagueoflegends.com/cdn/15.1.1/img/item/${item.id}.png`}
             alt={item.name}
-            className={`${size} rounded border border-slate-600 group-hover:border-pyke-green transition-all duration-200 cursor-help shadow-lg group-hover:shadow-pyke-green/20`}
+            className={`${size} border border-chrome-dim/40 group-hover:border-chrome-silver transition-all duration-200 cursor-help shadow-lg`}
             onError={(e) => {
-                // Fallback to a generic item icon if image fails to load
                 (e.target as HTMLImageElement).src = 'https://ddragon.leagueoflegends.com/cdn/15.1.1/img/item/1001.png';
             }}
         />
-        {/* Tooltip */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/95 border border-pyke-green text-slate-200 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg shadow-pyke-green/20">
-            <div className="font-bold text-pyke-green mb-1">{item.name}</div>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-chrome-ink/95 border border-chrome-silver/40 text-chrome-silver text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg">
+            <div className="font-bold text-chrome-bright mb-1">{item.name}</div>
             <div>{item.reason || "Standard Pyke item."}</div>
         </div>
     </div>
 );
 
 const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: string }> = ({ id, name, iconPath, reason }) => {
-    // Use official Data Dragon API for rune icons
     const runeIconUrl = getRuneIconUrl(id);
     
     return (
@@ -39,73 +39,74 @@ const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: 
             <img
                 src={runeIconUrl}
                 alt={name}
-                className="w-8 h-8 rounded-full border border-slate-600 group-hover:border-pyke-green transition-colors cursor-help"
+                className="w-8 h-8 border border-chrome-dim/40 group-hover:border-chrome-silver transition-colors cursor-help"
                 onError={(e) => {
-                    // Fallback to the provided iconPath if Data Dragon fails
                     const target = e.target as HTMLImageElement;
                     if (target.src !== iconPath) {
                         target.src = iconPath;
                     } else {
-                        // Final fallback to a generic stat shard icon
                         target.src = 'https://ddragon.leagueoflegends.com/cdn/15.1.1/img/perk/5001.png';
                     }
                 }}
             />
-            {/* Tooltip */}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/95 border border-pyke-green text-slate-200 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg shadow-pyke-green/20">
-                <div className="font-bold text-pyke-green mb-1">{name}</div>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-chrome-ink/95 border border-chrome-silver/40 text-chrome-silver text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg">
+                <div className="font-bold text-chrome-bright mb-1">{name}</div>
                 <div>{reason || "Standard Pyke rune."}</div>
             </div>
         </div>
     );
 };
 
-export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport, canExport, exportStatus }) => {
+export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport, canExport, exportStatus, accentColor }) => {
     return (
-        <div className="space-y-8 animate-fade-in relative" style={{ zIndex: 1, position: 'relative' }}>
+        <div className="space-y-8 animate-fade-in relative" style={{ zIndex: 1, position: 'relative', ['--build-accent' as string]: accentColor || 'var(--chrome-silver)' }}>
             {/* Header */}
-            <div className="flex justify-between items-center border-b border-slate-700/50 pb-4">
-                <h2 className="text-2xl font-display text-pyke-green tracking-widest uppercase drop-shadow-[0_0_8px_rgba(0,255,157,0.3)]">Dominator Loadout</h2>
+            <div className="flex flex-wrap justify-between items-center gap-3 border-b border-chrome-silver/20 pb-4 relative">
+                <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-chrome-silver/60 via-transparent to-chrome-blood/40" />
+                <h2 className="hud-heading text-2xl text-chrome-bright drop-shadow-[0_0_8px_rgba(242,244,247,0.2)]">
+                    <ChromeMark size={16} style={{ color: accentColor }} /> Dominator Loadout
+                </h2>
                 {canExport && (
                     <button
                         onClick={onExport}
                         disabled={exportStatus !== 'idle'}
-                        className={`px-5 py-2.5 rounded-lg border-2 transition-all duration-200 uppercase font-bold text-sm tracking-wider shadow-lg ${
+                        className={`px-5 py-2.5 border-2 transition-all duration-200 uppercase font-bold text-sm tracking-wider shadow-lg clip-path-none ${
                             exportStatus === 'success' 
-                                ? 'bg-green-500 text-black border-green-500 shadow-green-500/30' 
+                                ? 'bg-emerald-600 text-white border-emerald-500' 
                                 : exportStatus === 'error' 
-                                    ? 'bg-red-500 text-white border-red-500 shadow-red-500/30' 
-                                    : 'bg-slate-800/80 hover:bg-pyke-green hover:text-black text-pyke-green border-pyke-green hover:shadow-pyke-green/30 hover:scale-105 active:scale-95'
+                                    ? 'bg-chrome-blood text-white border-chrome-blood' 
+                                    : 'bg-chrome-ink/80 hover:bg-chrome-silver hover:text-chrome-ink text-chrome-silver border-chrome-silver hover:scale-105 active:scale-95'
                         }`}
+                        style={{ clipPath: 'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)' }}
                     >
                         {exportStatus === 'success' ? '✓ Exported!' :
                             exportStatus === 'error' ? '✕ Failed' :
                                 '→ Export Build'}
                     </button>
                 )}
-                {canExport && (
-                    <p className="text-xs text-slate-500 mt-2">
-                        Exports runes and item set. Item set appears in-game shop.
-                    </p>
-                )}
             </div>
+            {canExport && (
+                <p className="text-xs text-chrome-dim -mt-6">
+                    Exports runes and item set. Item set appears in-game shop.
+                </p>
+            )}
 
             {/* STRATEGIC ANALYSIS SECTION */}
-            <div className="bg-slate-900/70 border border-pyke-green/30 p-6 rounded-xl relative overflow-hidden backdrop-blur-sm shadow-xl hover:border-pyke-green/50 transition-all duration-300">
-                <div className="absolute top-0 right-0 p-4 opacity-5">
-                    <h1 className="text-9xl font-black text-pyke-green">?</h1>
+            <HudFrame accent="green" label="Doctrine" className="p-6 hud-scanlines">
+                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                    <h1 className="text-9xl font-black text-pyke-green font-display">?</h1>
                 </div>
 
                 <div className="relative z-10">
                     <div className="flex justify-between items-start mb-4">
                         <div>
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Mission Objective</h3>
+                            <h3 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.22em] mb-1">Mission Objective</h3>
                             <h2 className="text-3xl font-display text-white uppercase tracking-wide">{analysis.title}</h2>
                         </div>
-                        <div className={`px-3 py-1 rounded border text-xs font-bold uppercase tracking-wider ${analysis.aggressionLevel === 'EXTREME' ? 'bg-red-500/20 text-red-400 border-red-500/50' :
-                            analysis.aggressionLevel === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border-orange-500/50' :
-                                analysis.aggressionLevel === 'MODERATE' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50' :
-                                    'bg-blue-500/20 text-blue-400 border-blue-500/50'
+                        <div className={`hud-chip ${analysis.aggressionLevel === 'EXTREME' ? 'hud-accent-blood !text-red-400' :
+                            analysis.aggressionLevel === 'HIGH' ? 'hud-accent-blood !text-orange-400' :
+                                analysis.aggressionLevel === 'MODERATE' ? '!text-yellow-400' :
+                                    'hud-accent-cyan !text-cyan-300'
                             }`}>
                             Aggression: {analysis.aggressionLevel}
                         </div>
@@ -119,6 +120,11 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                         <div>
                             <h4 className="text-xs font-bold text-pyke-green uppercase tracking-wider mb-2">Win Condition</h4>
                             <p className="text-sm text-slate-400">{analysis.winCondition}</p>
+                            {analysis.roamAdvice && (
+                                <p className="text-sm text-cyan-300/90 mt-3 border-l-2 border-cyan-500/40 pl-3">
+                                    {analysis.roamAdvice}
+                                </p>
+                            )}
                         </div>
                         <div>
                             <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider mb-2">Primary Targets</h4>
@@ -283,13 +289,13 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                         </div>
                     )}
                 </div>
-            </div>
+            </HudFrame>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Items Section */}
-                <div className="space-y-6 bg-slate-900/40 p-6 rounded-xl border border-slate-800/50 backdrop-blur-sm">
-                    <h3 className="text-xl text-slate-300 font-bold flex items-center gap-2">
-                        <span className="text-pyke-green">⚔</span> Item Build
+                <HudFrame accent="steel" label="Arsenal" className="space-y-6 p-6">
+                    <h3 className="hud-heading text-xl text-slate-300">
+                        <ChromeMark size={14} className="text-chrome-bright" /> Item Build
                     </h3>
 
                     {/* Full Build Path */}
@@ -329,12 +335,12 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                             {build.situational.map((item, i) => <ItemIcon key={i} item={item} />)}
                         </div>
                     </div>
-                </div>
+                </HudFrame>
 
                 {/* Runes Section */}
-                <div className="space-y-6 bg-slate-900/40 p-6 rounded-xl border border-slate-800/50 backdrop-blur-sm">
-                    <h3 className="text-xl text-slate-300 font-bold flex items-center gap-2">
-                        <span className="text-pyke-green">✨</span> Runes Reforged
+                <HudFrame accent="blood" label="Perks" className="space-y-6 p-6">
+                    <h3 className="hud-heading text-xl text-slate-300">
+                        <ChromeMark size={14} className="text-chrome-blood" /> Runes Reforged
                     </h3>
 
                     <div className="bg-pyke-accent/20 p-4 rounded border border-slate-700">
@@ -410,7 +416,7 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                             </div>
                         </div>
                     </div>
-                </div>
+                </HudFrame>
             </div>
         </div>
     );

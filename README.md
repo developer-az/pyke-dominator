@@ -1,323 +1,214 @@
-# Pyke Dominator 🎣
+# Pyke Dominator
 
 <div align="center">
 
-**A comprehensive League of Legends matchup analyzer and build optimizer for Pyke support players**
+**Desktop companion for Pyke support — matchup analysis, loadout export, and a live in-game overlay**
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/developer-az/pyke-dominator)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/developer-az/pyke-dominator/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.2-blue)](https://react.dev/)
+[![Electron](https://img.shields.io/badge/Electron-39-blue)](https://www.electronjs.org/)
 
 </div>
 
 ---
 
-## 📋 Table of Contents
+## Overview
 
-- [Overview](#overview)
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Technical Details](#technical-details)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
+**Pyke Dominator** is a Windows desktop app for League of Legends Pyke support players. It connects to the League Client, fills enemy picks in champion select, recommends items and runes for the matchup, exports loadouts into the client, and shows a lightweight chrome overlay while you play.
+
+Designed for ranked climbing and practice — clear recommendations, one-click export, and an overlay that stays out of the way when locked.
 
 ---
 
-## 🎯 Overview
+## Features
 
-**Pyke Dominator** is an intelligent desktop application designed to help League of Legends players optimize their Pyke support gameplay. The app analyzes enemy team compositions and provides:
+### Matchup & loadout
 
-- **Optimal item builds** based on enemy threats and team composition
-- **Customized rune pages** tailored to specific matchups
-- **Detailed matchup analysis** with strategic insights
-- **2v2 damage comparisons** for bot lane scenarios
-- **Automatic champion detection** via League Client API integration
+- **Enemy composition analysis** — Top, Jungle, Mid, Bot, Support
+- **Item builds** — Core path, boots, and situational picks (Edge of Night, Maw, Serpent’s Fang, and more) based on tanks, burst, CC, and magic threats
+- **Rune pages** — Primary and secondary trees adapted to poke, CC, and lane shape, with short explanations
+- **Dominance gauge** — Quick read on how favorable the bot-lane / team setup is for Pyke
+- **Ally context** — Optional ADC and Mid picks for 2v2 and roam-aware scoring
+- **Lane insights** — Difficulty, lane tips, all-in windows, and damage estimates at key levels
 
-Whether you're climbing ranked or improving your Pyke gameplay, Pyke Dominator provides data-driven recommendations to maximize your impact in every game.
+### League Client integration
 
----
+- Auto-connects when the League Client is running
+- Detects champion select and fills enemy roles as picks lock in
+- **Export runes** and **item sets** into the client with one action
+- Clears back to a ready state after the match so the next lobby starts clean
 
-## ✨ Features
+### In-game overlay
 
-### 🎮 Core Functionality
-
-- **Smart Build Calculator**
-  - Analyzes enemy team composition (Top, Jungle, Mid, Bot, Support)
-  - Recommends optimal item builds based on threats (tanks, squishies, CC-heavy comps)
-  - Suggests situational items (Edge of Night, Maw, Serpent's Fang, etc.)
-  - Prioritizes items based on pro play meta and game state
-
-- **Dynamic Rune Generator**
-  - Automatically selects optimal rune pages for each matchup
-  - Adapts secondary runes based on enemy composition (poke threats, CC, etc.)
-  - Uses official Data Dragon API for up-to-date rune data
-  - Provides explanations for each rune choice
-
-- **Comprehensive Matchup Analysis**
-  - **Bot Lane Matchup**: Detailed analysis of enemy ADC + Support
-  - **Difficulty Rating**: EASY, MEDIUM, HARD, or VERY_HARD
-  - **Strategic Insights**: Lane phase tips, all-in potential, key cooldowns
-  - **Damage Analysis**: Pyke's all-in damage at levels 3, 6, and 6 with ult
-  - **2v2 Damage Comparison**: Your bot lane vs enemy bot lane damage calculations
-
-- **League Client Integration**
-  - Automatically detects when you're in champion select
-  - Auto-fills enemy team composition
-  - Exports rune pages directly to League Client
-  - Real-time updates during champion select
-
-- **Modern UI/UX**
-  - Beautiful dark theme with Pyke-inspired green accents
-  - Searchable champion dropdowns with type-to-search
-  - Responsive design (works on desktop and web)
-  - Smooth animations and transitions
-  - Professional, intuitive interface
+- Transparent chrome frames around the ability bar and minimap
+- Live-client aware: appears when a match is active, tears down after the game
+- **HUD Scale** and **Minimap Scale** sliders (0–100) to match League’s Interface settings
+- **Sync LoL** — reads `GlobalScale` / `MinimapScale` from League’s `game.cfg`
+- Per-pixel **calibration** (nudge ability / map frames) when unlocked
+- Custom **chrome color** with presets
+- Performance-minded: overlay is created only in-game; hidden overlay is throttled so it does not fight League for GPU/CPU
 
 ---
 
-## 📸 Screenshots
+## Install (Windows)
 
-> **Note**: Add screenshots of your application here to showcase the UI and features.
+### From a release (recommended)
+
+1. Open [Releases](https://github.com/developer-az/pyke-dominator/releases) and download **v1.3.0**
+2. Choose either:
+   - **Portable** — `Pyke Dominator 1.3.0.exe` (run directly, no install)
+   - **Setup** — `Pyke Dominator Setup 1.3.0.exe` (NSIS installer)
+3. Launch the app with the League Client open (or start League afterward — it reconnects automatically)
+
+### From source
+
+```bash
+git clone https://github.com/developer-az/pyke-dominator.git
+cd pyke-dominator
+npm install
+npm run dist
+```
+
+Installer and portable builds land in the `release/` folder.
 
 ---
 
-## 🚀 Installation
+## Quick start
+
+1. Start **League of Legends**, then open **Pyke Dominator**
+2. Enter champion select as Pyke (or any role — enemy fills still apply)
+3. Review the recommended **items**, **runes**, and **matchup** panel
+4. Click **Export** to push the rune page and item set into the client
+5. When the game starts, the overlay appears automatically (if not hidden)
+
+You can also pick enemies manually with the searchable champion dropdowns for practice or when LCU is unavailable (Demo mode).
+
+---
+
+## Overlay controls
+
+| Action | Shortcut / control |
+|--------|--------------------|
+| Show / hide overlay | **Ctrl+Shift+H** (or **Overlay On/Off** in the app) |
+| Lock (click-through) / unlock (move & calibrate) | **Ctrl+Shift+U** |
+| Match League HUD / minimap scale | Sliders **HUD** / **Map**, or **Sync LoL** |
+| Chrome accent color | Color picker + presets in the toolbar |
+| Fine-tune frame alignment | Unlock overlay → nudge Ability / Map marks → optional Reset |
+
+When unlocked, drag the compact overlay window and use the Ability / Map nudge buttons (← → ↑ ↓, W±, H±) so the chrome lines up with your exact client. Calibration is saved between sessions.
+
+### Display mode tip (important for FPS)
+
+Set League’s **Video → Display Mode** to **Borderless**.
+
+Overlays on top of **exclusive Fullscreen** force Windows to recompose every frame and can cost real FPS. Borderless keeps the overlay cheap and the game responsive.
+
+---
+
+## Usage notes
+
+- **LCU** — Requires the League Client running. Champion auto-fill works in champion select; export needs a live client session.
+- **Post-game reset** — After a match ends, champ-select caches and overlay state clear so the next game starts fresh.
+- **Hotkey conflicts** — If Ctrl+Shift+H or Ctrl+Shift+U do nothing, another app may own those shortcuts; use the in-app Overlay / Lock buttons instead.
+- **Data** — Champions, items, and runes load from Riot’s Data Dragon CDN (latest patch when available).
+
+---
+
+## Development
 
 ### Prerequisites
 
-- **Node.js** (v18 or higher)
-- **npm** or **yarn**
-- **League of Legends** client (for LCU integration)
+- Node.js 18+
+- npm
+- Windows (Electron desktop features and LCU/overlay)
 
-### Desktop Application (Windows)
-
-1. **Download the latest release**
-   ```bash
-   # Visit the Releases page and download the Windows installer
-   # Or build from source (see Development section)
-   ```
-
-2. **Install and run**
-   - Run the installer
-   - Launch Pyke Dominator
-   - The app will automatically connect to League Client when available
-
-### Web Version
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/developer-az/pyke-dominator.git
-   cd pyke-dominator
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Build and preview**
-   ```bash
-   npm run build
-   npm run preview
-   ```
-
-   The web version will be available at `http://localhost:4173`
-
----
-
-## 💻 Usage
-
-### Basic Usage
-
-1. **Launch the application**
-   - Desktop: Open Pyke Dominator
-   - Web: Navigate to the web version
-
-2. **Select enemy champions**
-   - Use the searchable dropdowns to select enemy champions for each role
-   - Type champion names to quickly filter and select
-   - The app will automatically calculate builds and runes
-
-3. **Select your ADC** (optional)
-   - Choose your ADC in the "Your Team" section
-   - This enables accurate 2v2 damage comparisons
-
-4. **Review recommendations**
-   - **Items**: Core items, situational items, and build path
-   - **Runes**: Complete rune page with explanations
-   - **Matchup Analysis**: Strategic insights and damage breakdowns
-
-5. **Export runes** (Desktop only)
-   - Click "Export Runes" when connected to League Client
-   - Runes will be automatically imported into your League Client
-
-### League Client Integration
-
-The desktop app automatically connects to the League Client API when:
-- League of Legends is running
-- You're in champion select
-- The app detects champion selections
-
-**Note**: LCU integration requires League of Legends to be running and only works in champion select.
-
----
-
-## 🔧 Technical Details
-
-### Tech Stack
-
-- **Frontend**: React 19.2, TypeScript 5.9
-- **Build Tool**: Vite 7.2
-- **Desktop**: Electron 39.2
-- **Styling**: Tailwind CSS 3.4
-- **Linting**: ESLint 9.39 with TypeScript support
-
-### APIs Used
-
-- **Data Dragon API**: Official Riot Games API for champion, item, and rune data
-  - Champion data: `/cdn/{version}/data/en_US/champion.json`
-  - Rune data: `/cdn/{version}/data/en_US/runesReforged.json`
-  - Item/rune icons: `/cdn/{version}/img/{type}/{id}.png`
-
-- **League Client API (LCU)**: Local API for League Client integration
-  - Champion select detection: `/lol-champ-select/v1/session`
-  - Rune page export: `/lol-perks/v1/pages`
-
-### Architecture
-
-```
-pyke-dominator/
-├── electron/          # Electron main process and LCU connector
-├── src/
-│   ├── components/   # React components (BuildDisplay, ChampionSelect)
-│   ├── data/         # API services (championService, runeService)
-│   ├── logic/        # Core business logic (pykeLogic.ts)
-│   └── App.tsx       # Main application component
-├── dist/             # Built web assets
-└── dist-electron/    # Built Electron files
-```
-
-### Key Features Implementation
-
-- **Build Logic**: Analyzes enemy composition and recommends items based on:
-  - Tank count (Umbral Glaive priority)
-  - Squishy targets (Voltaic Cyclosword for burst)
-  - CC threats (Edge of Night, Mercury Treads)
-  - Magic damage (Maw of Malmortius)
-  - Pro play meta considerations
-
-- **Rune Logic**: Dynamically selects runes based on:
-  - Enemy poke threats (Second Wind vs Sixth Sense)
-  - CC composition (Unflinching)
-  - Team composition analysis
-
-- **Damage Calculations**: Estimates Pyke's damage at different levels:
-  - Level 3 combo (Q + E + autos)
-  - Level 6 combo (full rotation)
-  - Level 6 with ultimate (execute threshold)
-
----
-
-## 🛠️ Development
-
-### Setup
-
-1. **Clone and install**
-   ```bash
-   git clone https://github.com/developer-az/pyke-dominator.git
-   cd pyke-dominator
-   npm install
-   ```
-
-2. **Development mode**
-   ```bash
-   # Web development
-   npm run dev
-
-   # Desktop development (with Electron)
-   npm run dev:electron
-   ```
-
-### Building
+### Commands
 
 ```bash
-# Build web version
+# Web UI only
+npm run dev
+
+# Desktop app with Vite + Electron (Windows helper)
+npm run dev:electron:win
+# or
+npm run dev:electron
+
+# Production web build
 npm run build
 
-# Build desktop application
+# Full Windows installers (NSIS + portable) → release/
 npm run dist
 
-# Build without installer (for testing)
+# Unpackaged app dir (faster local check)
 npm run pack
 ```
 
-### Scripts
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Vite dev server |
+| `npm run dev:electron` / `dev:electron:win` | Electron + hot reload |
+| `npm run build` | Web production build |
+| `npm run electron:build` | Compile Electron main process |
+| `npm run dist` | Build + electron-builder (NSIS + portable) |
+| `npm run pack` | Build + electron-builder `--dir` |
+| `npm run lint` | ESLint |
+| `npm run preview` | Preview production web build |
 
-- `npm run dev` - Start Vite dev server (web)
-- `npm run dev:electron` - Start Electron app with hot reload
-- `npm run build` - Build web version
-- `npm run lint` - Run ESLint
-- `npm run preview` - Preview production build
-- `npm run dist` - Build Electron app with installer
+### Project layout
 
-### Code Structure
+```
+pyke-dominator/
+├── electron/           # Main process, LCU, live client, overlay window
+├── src/
+│   ├── components/     # UI (champion select, build display, gauge, HUD frame)
+│   ├── data/           # Data Dragon services
+│   ├── logic/          # Build / rune / matchup logic
+│   ├── overlay/        # In-game overlay React app
+│   └── App.tsx         # Main window
+├── overlay.html        # Overlay entry
+├── scripts/            # Perf / geometry helpers
+└── release/            # electron-builder output
+```
 
-- **`src/logic/pykeLogic.ts`**: Core logic for builds, runes, and analysis
-- **`src/components/BuildDisplay.tsx`**: UI for displaying builds and runes
-- **`src/components/ChampionSelect.tsx`**: Champion selection component
-- **`src/data/runeService.ts`**: Data Dragon API integration for runes
-- **`electron/main.ts`**: Electron main process and LCU handlers
+### Stack
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Guidelines
-
-- Follow the existing code style (TypeScript, ESLint rules)
-- Add comments for complex logic
-- Test your changes thoroughly
-- Update documentation as needed
+- React 19 · TypeScript 5.9 · Vite 7 · Electron 39 · Tailwind CSS 3.4
+- **Data Dragon** — champions, runes, icons
+- **LCU** — champ select session, rune pages, item sets
+- **Live Client API** — in-game player/state for the overlay
 
 ---
 
-## 📝 License
+## Contributing
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Pull requests are welcome.
 
----
-
-## 🙏 Acknowledgments
-
-- **Riot Games** for the Data Dragon API and League Client API
-- **League of Legends** community for gameplay insights
-- **Open source contributors** who make projects like this possible
+1. Fork the repo and create a feature branch
+2. Keep TypeScript / ESLint clean
+3. Test LCU export and overlay hotkeys on Windows when you touch those paths
+4. Open a PR with a short description of the change
 
 ---
 
-## 📞 Support
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/developer-az/pyke-dominator/issues)
-- **Repository**: [GitHub Repository](https://github.com/developer-az/pyke-dominator)
+- **Releases**: [GitHub Releases](https://github.com/developer-az/pyke-dominator/releases)
+- **Repository**: [developer-az/pyke-dominator](https://github.com/developer-az/pyke-dominator)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for Pyke players**
+**Built for Pyke players**
 
 *Pyke Dominator is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends. League of Legends and Riot Games are trademarks or registered trademarks of Riot Games, Inc.*
 

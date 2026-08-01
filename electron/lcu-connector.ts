@@ -4,6 +4,12 @@ import https from 'https';
 
 let credentials: { port: string; token: string; protocol: string } | null = null;
 
+// Reused across every request — creating a new https.Agent per call (as this
+// previously did) means a fresh TLS context/socket pool on every single LCU
+// request. On a 1–1.5s poll cadence for the life of the app that's constant,
+// avoidable socket churn competing with the game for CPU.
+const lcuHttpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
+
 export const connectToLCU = (): Promise<{ port: string; token: string; protocol: string }> => {
     return new Promise((resolve, reject) => {
         // Use PowerShell to find the process, it's more reliable on modern Windows than wmic
@@ -12,8 +18,6 @@ export const connectToLCU = (): Promise<{ port: string; token: string; protocol:
         exec(command, (error, stdout) => {
             if (error || !stdout || !stdout.trim()) {
                 console.log('LCU not found or error:', error);
-                // MOCK FOR DEV if explicitly requested, otherwise fail
-                // resolve({ port: '1234', token: 'mock-token', protocol: 'https' });
                 reject(new Error('League Client not found'));
                 return;
             }
@@ -35,138 +39,165 @@ export const connectToLCU = (): Promise<{ port: string; token: string; protocol:
     });
 };
 
-interface RunePage {
-    name: string;
-    id?: number;
-}
-
 interface LCURunePage {
     name: string;
     id: number;
+    primaryStyleId?: number;
+    subStyleId?: number;
+    selectedPerkIds?: number[];
+    current?: boolean;
 }
 
-export const exportRunePage = async (runePage: RunePage): Promise<void> => {
+export interface ExportRunePagePayload {
+    name: string;
+    primaryStyleId: number;
+    subStyleId: number;
+    selectedPerkIds: number[];
+    current?: boolean;
+}
+
+export const exportRunePage = async (runePage: ExportRunePagePayload): Promise<void> => {
     if (!credentials) throw new Error('LCU not connected');
 
-    // 1. Get current rune pages
-    const currentPages = await makeLCURequest('GET', '/lol-perks/v1/pages') as LCURunePage[];
+    if (!Array.isArray(runePage.selectedPerkIds) || runePage.selectedPerkIds.length !== 9) {
+        throw new Error(`Invalid rune page: expected 9 perk IDs, got ${runePage.selectedPerkIds?.length ?? 0}`);
+    }
 
-    // 2. Check if "Pyke Dominator" exists and delete it
-    const existingPage = currentPages.find((p: LCURunePage) => p.name === runePage.name);
-    if (existingPage) {
+    const currentPages = await makeLCURequest('GET', '/lol-perks/v1/pages');
+    const pages = Array.isArray(currentPages) ? (currentPages as LCURunePage[]) : [];
+
+    const existingPage = pages.find((p) => p.name === runePage.name);
+    if (existingPage?.id != null) {
         await makeLCURequest('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
     }
 
-    // 3. Create new page
-    await makeLCURequest('POST', '/lol-perks/v1/pages', runePage);
+    await makeLCURequest('POST', '/lol-perks/v1/pages', {
+        name: runePage.name,
+        primaryStyleId: runePage.primaryStyleId,
+        subStyleId: runePage.subStyleId,
+        selectedPerkIds: runePage.selectedPerkIds,
+        current: runePage.current !== false,
+    });
 };
 
-interface ItemSet {
-    title: string;
-    associatedChampions: number[];
-    associatedMaps: number[];
-    blocks: Array<{
-        type: string;
-        items: Array<{
-            id: string;
-            count: number;
-        }>;
-    }>;
+interface ItemSetBlock {
+    type: string;
+    items: Array<{ id: string; count: number }>;
 }
 
-interface LCUItemSet {
-    id: number;
-    title: string;
+interface LCUItemSetPage {
+    title?: string;
+    uid?: string;
+    type?: string;
+    map?: string;
+    mode?: string;
+    priority?: boolean;
+    sortrank?: number;
+    startedFrom?: string;
+    associatedChampions?: number[];
+    associatedMaps?: number[];
+    preferredItemSlots?: unknown[];
+    blocks?: ItemSetBlock[];
+    [key: string]: unknown;
 }
 
-// Export item set to League Client (appears in in-game shop)
-export const exportItemSet = async (build: { starter: Array<{ id: string }>; core: Array<{ id: string }>; boots: { id: string }; situational: Array<{ id: string }>; buildPath: Array<{ id: string }> }): Promise<void> => {
+interface LCUItemSetsCollection {
+    accountId?: number;
+    itemSets?: LCUItemSetPage[];
+    timestamp?: number;
+}
+
+export interface ExportBuildPayload {
+    starter: Array<{ id: string }>;
+    core: Array<{ id: string }>;
+    boots: { id: string };
+    situational: Array<{ id: string }>;
+    buildPath: Array<{ id: string }>;
+}
+
+/**
+ * Export item set via the real LCU collection API:
+ * GET/PUT `/lol-item-sets/v1/item-sets/{summonerId}/sets`
+ *
+ * The previous implementation POSTed a bare set to a non-collection path and
+ * treated the GET response as an array — both are wrong for current clients.
+ */
+export const exportItemSet = async (build: ExportBuildPayload): Promise<void> => {
     if (!credentials) throw new Error('LCU not connected');
 
-    try {
-        // Get current summoner ID (needed for item sets)
-        const currentSummoner = await makeLCURequest('GET', '/lol-summoner/v1/current-summoner') as { summonerId: number };
-        if (!currentSummoner || !currentSummoner.summonerId) {
-            throw new Error('Could not get summoner ID');
-        }
-
-        const summonerId = currentSummoner.summonerId;
-
-        // Get Pyke's champion ID (555)
-        const pykeChampionId = 555;
-
-        // Get existing item sets
-        const existingSets = await makeLCURequest('GET', `/lol-item-sets/v1/item-sets/${summonerId}`) as LCUItemSet[] | null;
-        
-        // Delete existing "Pyke Dominator" item set if it exists
-        if (existingSets && Array.isArray(existingSets)) {
-            const existingSet = existingSets.find((s: LCUItemSet) => s.title === 'Pyke Dominator');
-            if (existingSet) {
-                await makeLCURequest('DELETE', `/lol-item-sets/v1/item-sets/${summonerId}/${existingSet.id}`);
-            }
-        }
-
-        // Create item set blocks
-        const blocks: ItemSet['blocks'] = [];
-
-        // Starter items block
-        if (build.starter.length > 0) {
-            blocks.push({
-                type: 'Starting Items',
-                items: build.starter.map(item => ({ id: item.id, count: 1 }))
-            });
-        }
-
-        // Core items block
-        if (build.core.length > 0) {
-            blocks.push({
-                type: 'Core Items',
-                items: build.core.map(item => ({ id: item.id, count: 1 }))
-            });
-        }
-
-        // Boots block
-        if (build.boots) {
-            blocks.push({
-                type: 'Boots',
-                items: [{ id: build.boots.id, count: 1 }]
-            });
-        }
-
-        // Build path block (ordered purchase sequence)
-        if (build.buildPath.length > 0) {
-            blocks.push({
-                type: 'Build Path',
-                items: build.buildPath.map(item => ({ id: item.id, count: 1 }))
-            });
-        }
-
-        // Situational items block
-        if (build.situational.length > 0) {
-            blocks.push({
-                type: 'Situational',
-                items: build.situational.map(item => ({ id: item.id, count: 1 }))
-            });
-        }
-
-        // Create the item set
-        const itemSet: ItemSet = {
-            title: 'Pyke Dominator',
-            associatedChampions: [pykeChampionId],
-            associatedMaps: [11, 12], // Summoner's Rift (11 = Classic, 12 = ARAM - adjust as needed)
-            blocks: blocks
-        };
-
-        // Create the item set
-        await makeLCURequest('POST', `/lol-item-sets/v1/item-sets/${summonerId}`, itemSet);
-    } catch (error: unknown) {
-        const err = error as { message?: string };
-        console.error('Failed to export item set:', err.message || 'Unknown error');
-        throw error;
+    const currentSummoner = await makeLCURequest('GET', '/lol-summoner/v1/current-summoner') as {
+        summonerId?: number;
+        accountId?: number;
+    } | null;
+    if (!currentSummoner?.summonerId) {
+        throw new Error('Could not get summoner ID from LCU');
     }
+
+    const summonerId = currentSummoner.summonerId;
+    const pykeChampionId = 555;
+
+    const existing = await makeLCURequest(
+        'GET',
+        `/lol-item-sets/v1/item-sets/${summonerId}/sets`
+    ) as LCUItemSetsCollection | null;
+
+    const existingSets = Array.isArray(existing?.itemSets) ? existing!.itemSets! : [];
+    const kept = existingSets.filter((s) => s.title !== 'Pyke Dominator');
+
+    const blocks: ItemSetBlock[] = [];
+    if (build.starter.length > 0) {
+        blocks.push({
+            type: 'Starting Items',
+            items: build.starter.map((item) => ({ id: String(item.id), count: 1 })),
+        });
+    }
+    if (build.core.length > 0) {
+        blocks.push({
+            type: 'Core Items',
+            items: build.core.map((item) => ({ id: String(item.id), count: 1 })),
+        });
+    }
+    if (build.boots) {
+        blocks.push({
+            type: 'Boots',
+            items: [{ id: String(build.boots.id), count: 1 }],
+        });
+    }
+    if (build.buildPath.length > 0) {
+        blocks.push({
+            type: 'Build Path',
+            items: build.buildPath.map((item) => ({ id: String(item.id), count: 1 })),
+        });
+    }
+    if (build.situational.length > 0) {
+        blocks.push({
+            type: 'Situational',
+            items: build.situational.map((item) => ({ id: String(item.id), count: 1 })),
+        });
+    }
+
+    const newSet: LCUItemSetPage = {
+        title: 'Pyke Dominator',
+        type: 'custom',
+        map: 'any',
+        mode: 'any',
+        priority: false,
+        sortrank: 0,
+        startedFrom: 'BLANK',
+        associatedChampions: [pykeChampionId],
+        associatedMaps: [11, 12],
+        preferredItemSlots: [],
+        blocks,
+    };
+
+    const payload: LCUItemSetsCollection = {
+        accountId: existing?.accountId ?? currentSummoner.accountId ?? 0,
+        itemSets: [...kept, newSet],
+        timestamp: Date.now(),
+    };
+
+    await makeLCURequest('PUT', `/lol-item-sets/v1/item-sets/${summonerId}/sets`, payload);
 };
-
-
 
 export const makeLCURequest = async (method: string, endpoint: string, body?: unknown) => {
     if (!credentials) {
@@ -185,27 +216,28 @@ export const makeLCURequest = async (method: string, endpoint: string, body?: un
                 'Content-Type': 'application/json'
             },
             data: body,
-            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+            httpsAgent: lcuHttpsAgent,
+            timeout: 4000,
             validateStatus: (status) => {
                 // Don't throw on 404 - it's expected when not in champ select
                 return status < 500;
             }
         });
-        
-        // Check if response is an error
+
         if (response.status === 404) {
-            // 404 is expected when not in champ select, return null instead of throwing
             return null;
         }
-        
+
         if (response.status >= 400) {
-            throw new Error(`LCU API returned status ${response.status}`);
+            const detail = typeof response.data === 'object'
+                ? JSON.stringify(response.data)
+                : String(response.data ?? '');
+            throw new Error(`LCU API ${method} ${endpoint} → ${response.status}${detail ? `: ${detail}` : ''}`);
         }
-        
+
         return response.data;
     } catch (error: unknown) {
-        // Only log non-404 errors
-        const axiosError = error as { response?: { status?: number }; message?: string };
+        const axiosError = error as { response?: { status?: number; data?: unknown }; message?: string };
         if (axiosError.response?.status !== 404) {
             console.error('LCU Request Error:', axiosError.message || 'Unknown error');
         }
