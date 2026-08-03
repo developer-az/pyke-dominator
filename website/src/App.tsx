@@ -134,6 +134,7 @@ export default function App() {
 
             <div className="animate-fade-up mt-12" style={{ animationDelay: '180ms' }}>
               <HudPreview
+                size="hero"
                 src={`${base}screenshots/hero-app.png`}
                 alt="One Trick app — enemy squad picker and Pyke Support standby"
                 caption="In-app · Pyke Support · enemy squad"
@@ -161,6 +162,7 @@ export default function App() {
               </Reveal>
               <Reveal delayMs={80}>
                 <HudPreview
+                  size="inline"
                   src={`${base}screenshots/panels-ally.png`}
                   alt="One Trick app — ally lanes and awaiting data"
                   caption="In-app · ally lanes · analysis standby"

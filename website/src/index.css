@@ -160,6 +160,24 @@ body {
     0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
+/* Screenshot plane — ink matches capture so letterboxing never shows */
+.hud-shot {
+  aspect-ratio: 838 / 577;
+  border: 1px solid rgba(212, 216, 222, 0.28);
+  background: #0a0b0d;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.hud-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
