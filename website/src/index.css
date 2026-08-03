@@ -160,9 +160,8 @@ body {
     0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
-/* Screenshot plane — ink matches capture so letterboxing never shows */
+/* Screenshot plane — image drives height; ink matches capture edges */
 .hud-shot {
-  aspect-ratio: 838 / 577;
   border: 1px solid rgba(212, 216, 222, 0.28);
   background: #0a0b0d;
   box-shadow:
@@ -171,11 +170,11 @@ body {
 }
 
 .hud-shot img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
   display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 838 / 577;
+  background: #0a0b0d;
 }
 
 @media (prefers-reduced-motion: reduce) {
