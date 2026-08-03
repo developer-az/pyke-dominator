@@ -401,13 +401,127 @@ export const OverlayApp: React.FC = () => {
       </div>
       )}
 
-      <div
-        className={
-          compactPanel
-            ? `hud-overlay-scale absolute inset-1.5 ${collapsed ? 'opacity-70' : 'opacity-100'}`
-            : `hud-overlay-scale absolute top-14 right-3 w-[210px] ${collapsed ? 'opacity-70' : 'opacity-100'}`
-        }
-      >
+      {/* Dual-rail HUD when locked: sums left, cues/buy right — uses both sides of the screen */}
+      {!compactPanel && !collapsed && (
+        <>
+          <div className={`hud-overlay-scale absolute top-14 left-3 w-[220px] ${collapsed ? 'opacity-70' : 'opacity-100'}`}>
+            <div className="hud-overlay-panel overflow-hidden">
+              <span className="hud-corner hud-corner-tl" aria-hidden />
+              <span className="hud-corner hud-corner-br" aria-hidden />
+              <span className="hud-rail hud-rail-top" aria-hidden />
+              <div className="hud-chrome-header !py-1 !px-2">
+                <div className="hud-chrome-title truncate text-[11px]">Enemy sums</div>
+                <div className="hud-chrome-meta !text-[8px]">
+                  {typeof state.gameTime === 'number' && state.gameTime > 0
+                    ? formatGameTime(state.gameTime)
+                    : 'Live'}
+                </div>
+              </div>
+              <div className="relative z-10 px-2 py-1.5 space-y-1 overflow-hidden">
+                {state.enemyBotSummoners && state.enemyBotSummoners.length > 0 ? (
+                  <SummonerTimers lanes={state.enemyBotSummoners} compact />
+                ) : (
+                  <p className="text-[10px] text-[#6b7280] font-mono tracking-wide">
+                    Waiting for bot / mid sums…
+                  </p>
+                )}
+                <p className="text-[8px] font-mono text-chrome-dim/60 tracking-wide pt-0.5">
+                  Flash auto on first death · unlock panel to mark sums
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className={`hud-overlay-scale absolute top-14 right-3 w-[220px] ${collapsed ? 'opacity-70' : 'opacity-100'}`}>
+            <div className="hud-overlay-panel overflow-hidden">
+              <span className="hud-corner hud-corner-tl" aria-hidden />
+              <span className="hud-corner hud-corner-br" aria-hidden />
+              <span className="hud-rail hud-rail-top" aria-hidden />
+              <div className="hud-chrome-header !py-1 !px-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <img
+                    src={championSquareUrl(profile.championId)}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="hud-champ-icon shrink-0"
+                    decoding="async"
+                    draggable={false}
+                  />
+                  <div className="min-w-0">
+                    <div className="hud-chrome-title truncate text-[11px]">One Trick</div>
+                    <div className="hud-chrome-meta !text-[8px]">
+                      {profile.shortLabel}
+                      {state.localPlayer ? ` · ${state.localPlayer.level}` : ''}
+                    </div>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setCollapsed(true)} className="hud-btn" title="Collapse rails">
+                  –
+                </button>
+              </div>
+              <div className="relative z-10 px-2 py-1.5 space-y-1 overflow-hidden">
+                {!profileMatchesLocal ? (
+                  <div className="hud-chrome-cue hud-chrome-cue--warn !text-[10px] !py-1">
+                    Switch profile → {state.localPlayer?.championName || '?'}
+                  </div>
+                ) : null}
+                <WardIndicator status={wardStatus} compact />
+                {cues.map((cue) => (
+                  <div
+                    key={cue.id}
+                    className={`hud-chrome-cue hud-chrome-cue--${cue.urgency} !py-1 !px-1.5`}
+                  >
+                    <div className="font-semibold uppercase tracking-[0.1em] text-[8px] opacity-90">
+                      {cue.label}
+                    </div>
+                    <div className="mt-0.5 opacity-85 text-[10px] leading-snug">{cue.detail}</div>
+                  </div>
+                ))}
+                {itemsLeft.length > 0 && (
+                  <div className="flex flex-wrap gap-0.5 items-center">
+                    {itemsLeft.map((item, index) => (
+                      <span
+                        key={`left-${item.id}`}
+                        className={`hud-chip !text-[9px] !py-0${index === 0 ? ' hud-accent-blood' : ''}`}
+                        title={item.reason}
+                      >
+                        {index === 0 ? '▸ ' : ''}
+                        {item.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {analysis?.preyFocus && !cues.some((c) => c.id === 'prey-focus') && (
+                  <div className="text-[10px] text-[#e4e6ea] leading-snug opacity-90">
+                    {analysis.preyFocus}
+                  </div>
+                )}
+                {!build && (
+                  <p className="text-[10px] text-[#6b7280] font-mono tracking-wide">
+                    Waiting for enemy data…
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {!compactPanel && collapsed && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="hud-overlay-scale absolute top-14 right-3 hud-overlay-panel !px-2 !py-1 hud-btn"
+          title="Expand dual rails"
+        >
+          One Trick +
+        </button>
+      )}
+
+      {/* Unlocked compact panel — single movable surface */}
+      {compactPanel && (
+      <div className={`hud-overlay-scale absolute inset-1.5 ${collapsed ? 'opacity-70' : 'opacity-100'}`}>
         <div className="hud-overlay-panel h-full overflow-hidden">
           <span className="hud-corner hud-corner-tl" aria-hidden />
           <span className="hud-corner hud-corner-br" aria-hidden />
@@ -415,7 +529,7 @@ export const OverlayApp: React.FC = () => {
 
           <div
             className="hud-chrome-header !py-1 !px-2"
-            style={compactPanel ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
+            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
           >
             <div className="flex items-center gap-1.5 min-w-0">
               <img
@@ -428,37 +542,32 @@ export const OverlayApp: React.FC = () => {
                 draggable={false}
               />
               <div className="min-w-0">
-                <div className="hud-chrome-title truncate text-[11px]">
-                  One Trick
-                </div>
+                <div className="hud-chrome-title truncate text-[11px]">One Trick</div>
                 <div className="hud-chrome-meta !text-[8px]">
                   {profile.shortLabel}
                   {typeof state.gameTime === 'number' && state.gameTime > 0
                     ? ` · ${formatGameTime(state.gameTime)}`
                     : ''}
-                  {state.localPlayer ? ` · ${state.localPlayer.level}` : ''}
                 </div>
               </div>
             </div>
-            {compactPanel && (
-              <div
-                className="flex gap-0.5 justify-end shrink-0"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              >
-                <button type="button" onClick={() => handleAlignMode(true)} className="hud-btn" title="Align HUD">
-                  Align
-                </button>
-                <button type="button" onClick={handleToggleClicks} className="hud-btn" title="Lock">
-                  Lock
-                </button>
-                <button type="button" onClick={handleHide} className="hud-btn" title="Hide">
-                  Hide
-                </button>
-                <button type="button" onClick={() => setCollapsed((c) => !c)} className="hud-btn">
-                  {collapsed ? '+' : '–'}
-                </button>
-              </div>
-            )}
+            <div
+              className="flex gap-0.5 justify-end shrink-0"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              <button type="button" onClick={() => handleAlignMode(true)} className="hud-btn" title="Align HUD">
+                Align
+              </button>
+              <button type="button" onClick={handleToggleClicks} className="hud-btn" title="Lock">
+                Lock
+              </button>
+              <button type="button" onClick={handleHide} className="hud-btn" title="Hide">
+                Hide
+              </button>
+              <button type="button" onClick={() => setCollapsed((c) => !c)} className="hud-btn">
+                {collapsed ? '+' : '–'}
+              </button>
+            </div>
           </div>
 
           {!collapsed && (
@@ -468,10 +577,8 @@ export const OverlayApp: React.FC = () => {
                   Switch profile → {state.localPlayer?.championName || '?'}
                 </div>
               ) : null}
-
               <WardIndicator status={wardStatus} compact />
-
-              {cues.map((cue) => (
+              {cues.slice(0, 3).map((cue) => (
                 <div
                   key={cue.id}
                   className={`hud-chrome-cue hud-chrome-cue--${cue.urgency} !py-1 !px-1.5`}
@@ -482,11 +589,9 @@ export const OverlayApp: React.FC = () => {
                   <div className="mt-0.5 opacity-85 text-[10px] leading-snug">{cue.detail}</div>
                 </div>
               ))}
-
               {state.enemyBotSummoners && state.enemyBotSummoners.length > 0 && (
                 <SummonerTimers lanes={state.enemyBotSummoners} compact />
               )}
-
               {itemsLeft.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 items-center">
                   {itemsLeft.map((item, index) => (
@@ -501,22 +606,11 @@ export const OverlayApp: React.FC = () => {
                   ))}
                 </div>
               )}
-
-              {analysis?.preyFocus && !cues.some((c) => c.id === 'prey-focus') && (
-                <div className="text-[10px] text-[#e4e6ea] leading-snug opacity-90">
-                  {analysis.preyFocus}
-                </div>
-              )}
-
-              {!build && (
-                <p className="text-[10px] text-[#6b7280] font-mono tracking-wide">
-                  Waiting for enemy data…
-                </p>
-              )}
             </div>
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

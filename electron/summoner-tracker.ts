@@ -5,6 +5,13 @@
  * Focus:
  * - Support profiles → Bot + Support
  * - Yone Mid → Mid only
+ *
+ * Reliability model:
+ * - Never restart a spell that is already on cooldown
+ * - Heal/Barrier/Ghost/Cleanse on death (high confidence — usually burned)
+ * - Flash on death only the first time while ready (later deaths are too noisy)
+ * - Ignite/Exhaust on kill/assist only for Support lane (ADC kills ≠ Ignite)
+ * - Manual mark overrides always win
  */
 
 export interface TrackedSpell {
@@ -14,6 +21,8 @@ export interface TrackedSpell {
   baseCd: number;
   readyAt: number;
   source?: 'kill' | 'death' | 'inferred' | 'manual';
+  /** Auto Flash-on-death already used once for this lane */
+  flashAutoUsed?: boolean;
 }
 
 export type TrackedRole = 'Bot' | 'Support' | 'Mid';
@@ -24,6 +33,8 @@ export interface EnemyLaneSpells {
   championName: string;
   championId?: number;
   spells: TrackedSpell[];
+  /** First Flash auto-start already consumed for this lane */
+  flashDeathArmed?: boolean;
 }
 
 /** @deprecated alias — prefer EnemyLaneSpells */
@@ -163,9 +174,17 @@ function upsertLane(
   }
   const spells = defs.map((d) => {
     const prev = existing?.spells.find((s) => s.name === d.name || s.spellId === d.id);
-    return prev ? { ...toTracked(d), readyAt: prev.readyAt, source: prev.source } : toTracked(d);
+    return prev
+      ? { ...toTracked(d), readyAt: prev.readyAt, source: prev.source }
+      : toTracked(d);
   });
-  const entry: EnemyLaneSpells = { role, championName, championId, spells };
+  const entry: EnemyLaneSpells = {
+    role,
+    championName,
+    championId,
+    spells,
+    flashDeathArmed: existing?.flashDeathArmed ?? true,
+  };
   if (existing) {
     Object.assign(existing, entry);
   } else {
@@ -175,7 +194,6 @@ function upsertLane(
 
 function inferRoleFromSpells(defs: SpellDef[]): TrackedRole | null {
   const names = new Set(defs.map((d) => d.name));
-  // Strong signals only — Ignite alone is mid assassin OR support, so defer to champ/position
   if (names.has('Heal') || names.has('Barrier')) return 'Bot';
   if (names.has('Exhaust')) return 'Support';
   if (names.has('Teleport') && !names.has('Heal')) return 'Mid';
@@ -195,7 +213,6 @@ function resolveRole(pos: string, championName: string, defs: SpellDef[]): Track
   if (p === 'BOTTOM') return 'Bot';
   if (p === 'UTILITY' || p === 'SUPPORT') return 'Support';
   if (p === 'MIDDLE' || p === 'MID') return 'Mid';
-  // Skip definite other roles
   if (p === 'TOP' || p === 'JUNGLE') return null;
   return inferRoleFromSpells(defs) || inferRoleFromChamp(championName);
 }
@@ -244,7 +261,6 @@ export function ingestLivePlayers(
       defFromName(e.summonerSpells?.summonerSpellOne?.displayName),
       defFromName(e.summonerSpells?.summonerSpellTwo?.displayName),
     ].filter(Boolean) as SpellDef[];
-    // Skip junglers (Smite)
     if (defs.some((d) => d.name === 'Smite')) continue;
     const role = resolveRole(e.position || '', e.championName, defs);
     candidates.push({ champ: e.championName, pos: e.position || '', defs, role });
@@ -277,13 +293,23 @@ export function ingestLivePlayers(
   }
 }
 
-function startSpellCd(lane: EnemyLaneSpells, spellName: string, source: TrackedSpell['source']): void {
+/**
+ * Start a spell CD. Never restarts an active cooldown (fixes false mid-CD refreshes).
+ * Manual marks always apply.
+ */
+function startSpellCd(
+  lane: EnemyLaneSpells,
+  spellName: string,
+  source: TrackedSpell['source'],
+  opts?: { force?: boolean }
+): boolean {
   const spell = lane.spells.find((s) => s.name === spellName);
-  if (!spell) return;
+  if (!spell) return false;
   const now = Date.now();
-  if (spell.readyAt > now + 30_000) return;
+  if (!opts?.force && spell.readyAt > now) return false;
   spell.readyAt = now + spell.baseCd * 1000;
   spell.source = source;
+  return true;
 }
 
 function laneMatchesChampion(lane: EnemyLaneSpells, championName: string | undefined): boolean {
@@ -302,9 +328,9 @@ interface LiveEvent {
 
 /**
  * Heuristics (no spell-cast events in Live Client):
- * - Killer among tracked → Ignite
- * - Assister with Exhaust/Ignite → start those
- * - Victim among tracked → Flash (+ Heal/Barrier if owned)
+ * - Support killer/assister → Ignite / Exhaust
+ * - Victim → Heal/Barrier/Ghost/Cleanse (high confidence)
+ * - Victim Flash → only first auto death while Flash is ready (then manual)
  */
 export function ingestLiveEvents(
   events: LiveEvent[] | undefined,
@@ -326,27 +352,64 @@ export function ingestLiveEvents(
     const victimChamp = lookup(ev.VictimName);
 
     for (const lane of trackedLanes) {
-      if (laneMatchesChampion(lane, killerChamp)) {
-        startSpellCd(lane, 'Ignite', 'kill');
+      // Combat sums: Support Ignite/Exhaust are reliable; ADC kills are usually autos
+      if (lane.role === 'Support' || lane.role === 'Mid') {
+        if (laneMatchesChampion(lane, killerChamp)) {
+          startSpellCd(lane, 'Ignite', 'kill');
+        }
+        for (const a of ev.Assisters || []) {
+          const assistChamp = lookup(a);
+          if (laneMatchesChampion(lane, assistChamp)) {
+            startSpellCd(lane, 'Exhaust', 'kill');
+            startSpellCd(lane, 'Ignite', 'kill');
+          }
+        }
       }
+
       if (laneMatchesChampion(lane, victimChamp)) {
-        startSpellCd(lane, 'Flash', 'death');
+        // High-confidence defensive sums — usually burned before death
         startSpellCd(lane, 'Heal', 'death');
         startSpellCd(lane, 'Barrier', 'death');
         startSpellCd(lane, 'Ghost', 'death');
         startSpellCd(lane, 'Cleanse', 'death');
-      }
-      for (const a of ev.Assisters || []) {
-        const assistChamp = lookup(a);
-        if (laneMatchesChampion(lane, assistChamp)) {
-          startSpellCd(lane, 'Exhaust', 'kill');
-          startSpellCd(lane, 'Ignite', 'kill');
+
+        // Flash: first death while ready only — later deaths are ~50/50
+        if (lane.flashDeathArmed !== false) {
+          const started = startSpellCd(lane, 'Flash', 'death');
+          if (started) lane.flashDeathArmed = false;
         }
       }
     }
   }
 
   detectFocusSumsComingUp();
+}
+
+/**
+ * Manual override — click when you saw them burn a sum.
+ * force=true restarts even mid-CD (correct a false timer).
+ */
+export function markSpellUsed(
+  role: TrackedRole,
+  spellName: string,
+  opts?: { clear?: boolean }
+): boolean {
+  const lane = trackedLanes.find((l) => l.role === role);
+  if (!lane) return false;
+  const spell = lane.spells.find(
+    (s) => s.name.toLowerCase() === spellName.toLowerCase() || s.short.toLowerCase() === spellName.toLowerCase()
+  );
+  if (!spell) return false;
+  if (opts?.clear) {
+    spell.readyAt = 0;
+    spell.source = 'manual';
+    if (spell.name === 'Flash') lane.flashDeathArmed = true;
+    return true;
+  }
+  startSpellCd(lane, spell.name, 'manual', { force: true });
+  if (spell.name === 'Flash') lane.flashDeathArmed = false;
+  lastFingerprint = ''; // force overlay / UI push
+  return true;
 }
 
 function focusPrimaryLane(): EnemyLaneSpells | undefined {
@@ -400,7 +463,7 @@ export function summonerPayloadChanged(): boolean {
   return true;
 }
 
-/** Snapshot for IPC — remaining seconds computed at read time, filtered by focus. */
+/** Snapshot for IPC — remaining seconds + absolute readyAt for local UI ticks. */
 export function serializeSummoners(
   now = Date.now(),
   focus: SummonerFocus = activeFocus
@@ -414,6 +477,7 @@ export function serializeSummoners(
     baseCd: number;
     remaining: number;
     ready: boolean;
+    readyAt: number;
     source?: string;
   }>;
 }> {
@@ -430,6 +494,7 @@ export function serializeSummoners(
         baseCd: s.baseCd,
         remaining,
         ready: remaining <= 0,
+        readyAt: s.readyAt,
         source: s.source,
       };
     }),

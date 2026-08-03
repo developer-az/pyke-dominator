@@ -267,18 +267,21 @@ const DEAD_ITEM_IDS = new Set([
     '3867', // Bounty of Worlds — quest mid-step, not a starter (use 3865 World Atlas)
 ]);
 
-/** Boot recommendation → shop chain IDs (must stay in sync with src/logic/bootChains.ts). */
+/**
+ * Boot recommendation → shop chain IDs (keep in sync with src/logic/bootChains.ts).
+ * Mid-tier keys stop at mid — supports should not be pushed into Noxian upgrades.
+ */
 const BOOT_CHAINS: Record<string, string[]> = {
+    '3009': ['1001', '3009'],
+    '3158': ['1001', '3158'],
+    '3111': ['1001', '3111'],
+    '3047': ['1001', '3047'],
+    '3006': ['1001', '3006'],
     '3170': ['1001', '3009', '3170'],
-    '3009': ['1001', '3009', '3170'],
     '3171': ['1001', '3158', '3171'],
-    '3158': ['1001', '3158', '3171'],
     '3173': ['1001', '3111', '3173'],
-    '3111': ['1001', '3111', '3173'],
     '3174': ['1001', '3047', '3174'],
-    '3047': ['1001', '3047', '3174'],
     '3172': ['1001', '3006', '3172'],
-    '3006': ['1001', '3006', '3172'],
 };
 
 function expandBootChain(boots: { id: string } | undefined): Array<{ id: string }> {
@@ -338,10 +341,10 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
     const blocks: ItemSetBlock[] = [];
     const starter = sanitizeItems(build.starter);
     const core = sanitizeItems(build.core);
-    // Full boot chain so supports can buy Boots → mid-tier → Noxian upgrade
+    // Boots → mid-tier (supports). Upgrades only if build recommends an upgrade ID.
     const boots = sanitizeItems(expandBootChain(build.boots));
     const path = sanitizeItems(build.buildPath);
-    const situational = sanitizeItems(build.situational);
+    const situational = sanitizeItems((build.situational || []).slice(0, 3));
     // Control Ward + Oracle Lens always available in the item set
     const vision = sanitizeItems([
         { id: '2055' }, // Control Ward
@@ -349,12 +352,12 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
         { id: '3340' }, // Stealth Ward (trinket)
     ]);
 
-    if (starter.length) blocks.push(block('Starting Items', starter));
+    if (starter.length) blocks.push(block('Starting — keep Atlas (never sell)', starter));
     if (core.length) blocks.push(block('Core Items', core));
-    if (boots.length) blocks.push(block('Boots (buy full chain)', boots));
+    if (boots.length) blocks.push(block('Boots (mid-tier complete)', boots));
     if (vision.length) blocks.push(block('Vision — pinks + sweeper', vision));
     if (path.length) blocks.push(block('Build Path', path));
-    if (situational.length) blocks.push(block('Situational', situational));
+    if (situational.length) blocks.push(block('Situational (pick 1–2)', situational));
 
     if (blocks.length === 0) {
         throw new Error('Nothing to export — the build has no valid item IDs.');

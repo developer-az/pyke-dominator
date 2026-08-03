@@ -2,7 +2,13 @@ import { app, BrowserWindow, ipcMain, globalShortcut, clipboard } from 'electron
 import path from 'path';
 import { connectToLCU, makeLCURequest } from './lcu-connector';
 import { fetchLiveClientData } from './live-client';
-import { startGameMonitor, stopGameMonitor, isCurrentlyInGame, setGameStateChangeHandler } from './game-monitor';
+import {
+    startGameMonitor,
+    stopGameMonitor,
+    isCurrentlyInGame,
+    setGameStateChangeHandler,
+    pushSummonerUpdate,
+} from './game-monitor';
 import {
     destroyOverlay,
     toggleOverlayVisibility,
@@ -27,7 +33,7 @@ import {
     broadcastOverlayMeta,
     type FrameCalibration,
 } from './overlay-window';
-import { formatAdcClipboard } from './summoner-tracker';
+import { formatAdcClipboard, markSpellUsed, type TrackedRole } from './summoner-tracker';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public');
@@ -225,6 +231,20 @@ app.whenReady().then(() => {
             return { success: false, error: err.message || 'Clipboard failed' };
         }
     });
+
+    ipcMain.handle(
+        'summoner-mark',
+        async (_event, role: TrackedRole, spellName: string, opts?: { clear?: boolean }) => {
+            try {
+                const ok = markSpellUsed(role, spellName, opts);
+                if (ok) pushSummonerUpdate();
+                return { success: ok };
+            } catch (error: unknown) {
+                const err = error as { message?: string };
+                return { success: false, error: err.message || 'Mark failed' };
+            }
+        }
+    );
 
     // Live Client Data (in-game, including Practice Tool)
     ipcMain.handle('live-client-data', async () => {

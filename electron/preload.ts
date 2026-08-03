@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         current?: boolean;
     }) => ipcRenderer.invoke('lcu-export-rune-page', runePage),
     clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard-write', text),
+    markSummonerSpell: (role: string, spellName: string, opts?: { clear?: boolean }) =>
+        ipcRenderer.invoke('summoner-mark', role, spellName, opts),
     windowMinimize: () => ipcRenderer.invoke('window-minimize'),
     windowMaximize: () => ipcRenderer.invoke('window-maximize'),
     windowClose: () => ipcRenderer.invoke('window-close'),

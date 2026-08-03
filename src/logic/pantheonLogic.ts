@@ -28,11 +28,11 @@ const ITEMS = {
   CONTROL_WARD: { id: '2055', name: 'Control Ward', icon: 'Control_Ward', reason: 'Buy every back — hold 1–2. Pit pink before objectives.' },
   ORACLE_LENS: { id: '3364', name: 'Oracle Lens', icon: 'Oracle_Lens', reason: 'Sweeper — swap ~9 min; clear the bush you engage from.' },
 
-  // Finished Noxian upgrades (shop chain: Boots → mid → upgrade).
-  MERCURY_TREADS: { id: '3173', name: 'Chainlaced Crushers', icon: 'Chainlaced_Crushers', reason: 'Finish Mercs → Crushers. Tenacity upgrade.' },
-  PLATED_STEELCAPS: { id: '3174', name: 'Armored Advance', icon: 'Armored_Advance', reason: 'Finish Steelcaps → Armored Advance.' },
-  IONIAN_BOOTS: { id: '3171', name: 'Crimson Lucidity', icon: 'Crimson_Lucidity', reason: 'Finish Ionian → Crimson Lucidity. Haste upgrade.' },
-  SWIFTMARCH: { id: '3170', name: 'Swiftmarch', icon: 'Swiftmarch', reason: 'Finish Swiftness → Swiftmarch. Roam MS path.' },
+  // Supports stop at mid-tier — Noxian upgrades optional.
+  MERCURY_TREADS: { id: '3111', name: "Mercury's Treads", icon: 'Mercurys_Treads', reason: 'Tenacity mid-tier — Crushers optional.' },
+  PLATED_STEELCAPS: { id: '3047', name: 'Plated Steelcaps', icon: 'Plated_Steelcaps', reason: 'AA reduction mid-tier — Armored Advance optional.' },
+  IONIAN_BOOTS: { id: '3158', name: 'Ionian Boots of Lucidity', icon: 'Ionian_Boots_of_Lucidity', reason: 'Haste mid-tier — Crimson Lucidity optional.' },
+  SWIFTMARCH: { id: '3009', name: 'Boots of Swiftness', icon: 'Boots_of_Swiftness', reason: 'Roam MS mid-tier — Swiftmarch optional.' },
 
   SUNDERED_SKY: { id: '6610', name: 'Sundered Sky', icon: 'Sundered_Sky', reason: 'Heal on the first strike — the item that lets you fight from behind.' },
   ECLIPSE: { id: '6692', name: 'Eclipse', icon: 'Eclipse', reason: 'Shield + %HP on your two-hit pattern — survivable spike.' },
@@ -203,7 +203,7 @@ export function calculatePantheonBuild(
       item: ITEMS.SWIFTMARCH,
       score: 20 + (ahead ? 16 : 0) + (ctx.hardLane ? 10 : 0) - (behind ? 14 : 0) - (ctx.cc >= 3 ? 10 : 0),
       reason: ctx.hardLane
-        ? 'Unwinnable 2v2 — Swiftmarch turns every crash into a mid/jg fight instead.'
+        ? 'Unwinnable 2v2 — Swiftness turns every crash into a mid/jg fight instead.'
         : 'Roam tempo while you are the strongest thing on the map.',
     },
   ];
@@ -334,21 +334,26 @@ export function calculatePantheonBuild(
 
   const coreIds = new Set([...core.map((i) => i.id), boots.id]);
   const situational = secondPool
-    .filter((s) => s.score >= 14 && !coreIds.has(s.item.id))
-    .slice(0, 5)
+    .filter((s) => s.score >= 18 && !coreIds.has(s.item.id))
+    .slice(0, 3)
     .map((s) => ({ ...s.item, reason: s.reason }));
 
   const buildPath: Item[] = [
-    ITEMS.WORLD_ATLAS,
+    {
+      ...ITEMS.WORLD_ATLAS,
+      reason: 'KEEP: World Atlas — never sell. Quests into Bloodsong in the same slot.',
+    },
     { ...ITEMS.POTION, reason: 'Open Atlas + pots — level 1–2 is your best window on this champion.' },
     { ...ITEMS.CONTROL_WARD, reason: 'VISION: first back pink — hold 1–2 every recall.' },
     { ...core[0], reason: 'RUSH: ' + (core[0].reason || '') },
-    { ...boots, reason: 'BOOTS: ' + (boots.reason || 'Buy the full chain to the upgrade.') },
+    { ...boots, reason: 'BOOTS: ' + (boots.reason || 'Buy Boots → mid-tier. Upgrade optional.') },
     { ...ITEMS.ORACLE_LENS, reason: 'SWEEP: swap Oracle ~9 min — clear before you W in.' },
-    { ...ITEMS.BLOODSONG, reason: 'QUEST: finish Atlas into Bloodsong when you are the engage threat.' },
+    {
+      ...ITEMS.BLOODSONG,
+      reason: 'QUEST: Atlas upgrades into Bloodsong — same slot, never sold.',
+    },
     { ...core[1], reason: 'SPIKE: ' + (core[1].reason || '') },
-    ...situational,
-    ITEMS.ELIXIR,
+    ...situational.slice(0, 2),
   ];
 
   // Exhaust over Ignite once you are behind or facing an assassin you must survive.

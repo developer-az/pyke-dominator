@@ -51,12 +51,12 @@ const ITEMS = {
     CONTROL_WARD: { id: '2055', name: 'Control Ward', icon: 'Control_Ward', reason: 'Buy every back — hold 1–2. Pit pink before objectives.' },
     ORACLE_LENS: { id: '3364', name: 'Oracle Lens', icon: 'Oracle_Lens', reason: 'Sweeper — swap ~9 min or with Umbral; clear before fights.' },
 
-    // Mobility Boots (3117) removed — recommend finished Noxian upgrades (shop: Boots → mid → upgrade).
-    SWIFTMARCH: { id: '3170', name: 'Swiftmarch', icon: 'Swiftmarch', reason: 'Finish: Boots → Swiftness → Swiftmarch. Roam MS path.' },
-    BOOTS_OF_SWIFTNESS: { id: '3009', name: 'Boots of Swiftness', icon: 'Boots_of_Swiftness', reason: 'Mid-tier into Swiftmarch — buy this before the upgrade.' },
-    MERCURY_TREADS: { id: '3173', name: 'Chainlaced Crushers', icon: 'Chainlaced_Crushers', reason: 'Finish: Boots → Mercs → Crushers. Tenacity upgrade.' },
-    PLATED_STEELCAPS: { id: '3174', name: 'Armored Advance', icon: 'Armored_Advance', reason: 'Finish: Boots → Steelcaps → Armored Advance.' },
-    IONIAN_BOOTS: { id: '3171', name: 'Crimson Lucidity', icon: 'Crimson_Lucidity', reason: 'Finish: Boots → Ionian → Crimson Lucidity. Haste upgrade.' },
+    // Supports stop at mid-tier boots — Noxian upgrades are optional gold sinks, not required.
+    BOOTS_OF_SWIFTNESS: { id: '3009', name: 'Boots of Swiftness', icon: 'Boots_of_Swiftness', reason: 'Roam MS — mid-tier is enough; skip Swiftmarch unless you are rich.' },
+    MERCURY_TREADS: { id: '3111', name: "Mercury's Treads", icon: 'Mercurys_Treads', reason: 'Tenacity mid-tier — complete here; Crushers optional.' },
+    PLATED_STEELCAPS: { id: '3047', name: 'Plated Steelcaps', icon: 'Plated_Steelcaps', reason: 'AA reduction mid-tier — Armored Advance optional.' },
+    IONIAN_BOOTS: { id: '3158', name: 'Ionian Boots of Lucidity', icon: 'Ionian_Boots_of_Lucidity', reason: 'Haste mid-tier — Crimson Lucidity optional.' },
+    SWIFTMARCH: { id: '3009', name: 'Boots of Swiftness', icon: 'Boots_of_Swiftness', reason: 'Roam MS path (mid-tier complete for support).' },
 
     VOLTAIC_CYCLOSWORD: { id: '6699', name: 'Voltaic Cyclosword', icon: 'Voltaic_Cyclosword', reason: 'Energized burst + slow — fight-deciding lethality spike.' },
     YOUMUUS_GHOSTBLADE: { id: '3142', name: 'Youmuu\'s Ghostblade', icon: 'Youmuu_s_Ghostblade', reason: 'MS active for roam entries and cleanup angles.' },
@@ -297,16 +297,16 @@ export const calculateBuild = (
             reason: `AA damage reduction vs ${ctx.aaHeavy} physical threats.`,
         },
         {
-            item: ITEMS.SWIFTMARCH,
+            item: ITEMS.BOOTS_OF_SWIFTNESS,
             score: ctx.roamPriority * 10 + (ctx.hardBot ? 12 : 0) + (ctx.midRoamValue >= 1 ? 8 : 0) + (ctx.tanks >= 2 ? 10 : 0) - (ctx.cc >= 3 ? 14 : 0),
             reason: ctx.hardBot
-                ? 'Hard bot — convert crashes cross-map; Swiftmarch maximizes fight selection.'
-                : 'Roam tempo to mid/jg after shove (Mobility Boots removed — Swiftmarch is the MS path).',
+                ? 'Hard bot — Swiftness turns crashes into better fights elsewhere.'
+                : 'Roam tempo to mid/jg after shove — mid-tier boots are enough.',
         },
         {
             item: ITEMS.IONIAN_BOOTS,
             score: 28 + ctx.squishies * 3 - (ctx.hardBot ? 4 : 0),
-            reason: 'Ability haste for Q/E/R cadence in skirmishes.',
+            reason: 'Ability haste for Q/E/R cadence — stop at Ionian (upgrade optional).',
         },
     ];
     bootScores = applyThreatScoring(bootScores, threats);
@@ -419,24 +419,33 @@ export const calculateBuild = (
     situationalPool = applyThreatScoring(situationalPool, threats);
     const coreIds = new Set(build.core.map((i) => i.id));
     const picked = situationalPool
-        .filter((s) => s.score >= 18 && !coreIds.has(s.item.id))
+        .filter((s) => s.score >= 22 && !coreIds.has(s.item.id))
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+        .slice(0, 3)
         .map((s) => ({ ...s.item, reason: s.reason }));
 
     build.situational = picked;
 
+    // Lean path — never sell Atlas; Bloodsong is the quest finish of the same slot.
     const buildPathItems: Item[] = [
-        ITEMS.WORLD_ATLAS,
+        {
+            ...ITEMS.WORLD_ATLAS,
+            reason: 'KEEP: World Atlas — never sell. Quests into Bloodsong in the same slot.',
+        },
         { ...ITEMS.POTION, reason: 'Open Atlas + pots — play for your first decisive spike.' },
         { ...ITEMS.CONTROL_WARD, reason: 'VISION: first back pink — then hold 1–2 every recall.' },
         { ...build.core[0], reason: 'RUSH: ' + (build.core[0].reason || 'Core.') },
-        { ...build.boots, reason: 'BOOTS: ' + (build.boots.reason || 'Buy full chain to the upgrade.') },
+        {
+            ...build.boots,
+            reason: 'BOOTS: ' + (build.boots.reason || 'Buy Boots → mid-tier. Upgrade optional.'),
+        },
         { ...ITEMS.ORACLE_LENS, reason: 'SWEEP: swap Oracle ~9 min or with Umbral — clear before fights.' },
-        { ...ITEMS.BLOODSONG, reason: 'QUEST: finish Atlas into Bloodsong for AD + execute amp.' },
+        {
+            ...ITEMS.BLOODSONG,
+            reason: 'QUEST: Atlas upgrades into Bloodsong — same slot, never sold.',
+        },
         { ...build.core[1], reason: 'SPIKE: ' + (build.core[1].reason || 'Second core.') },
-        ...build.situational,
-        { id: '2140', name: 'Elixir of Wrath', icon: 'Elixir_of_Wrath', reason: 'Elixir for the fight that ends the game.' },
+        ...build.situational.slice(0, 2),
     ];
     build.buildPath = buildPathItems;
 
