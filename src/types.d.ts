@@ -39,6 +39,10 @@ declare global {
                 spellName: string,
                 opts?: { clear?: boolean }
             ) => Promise<{ success: boolean; error?: string }>;
+            toggleSummonerSpell: (
+                role: 'Bot' | 'Support' | 'Mid',
+                spellName: string
+            ) => Promise<{ success: boolean; active: boolean; error?: string }>;
             onUpdate: (callback: (value: unknown) => void) => void;
             windowMinimize: () => Promise<void>;
             windowMaximize: () => Promise<void>;

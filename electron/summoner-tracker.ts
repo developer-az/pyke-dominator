@@ -404,12 +404,43 @@ export function markSpellUsed(
     spell.readyAt = 0;
     spell.source = 'manual';
     if (spell.name === 'Flash') lane.flashDeathArmed = true;
+    lastFingerprint = '';
     return true;
   }
   startSpellCd(lane, spell.name, 'manual', { force: true });
   if (spell.name === 'Flash') lane.flashDeathArmed = false;
-  lastFingerprint = ''; // force overlay / UI push
+  lastFingerprint = '';
   return true;
+}
+
+/**
+ * Toggle a spell timer: start CD if ready, clear if already counting down.
+ * Used by Page Up (ADC Flash) / Page Down (Support Flash) so a mis-press is undoable.
+ */
+export function toggleSpellUsed(
+  role: TrackedRole,
+  spellName: string
+): { success: boolean; active: boolean } {
+  const lane = trackedLanes.find((l) => l.role === role);
+  if (!lane) return { success: false, active: false };
+  const spell = lane.spells.find(
+    (s) =>
+      s.name.toLowerCase() === spellName.toLowerCase() ||
+      s.short.toLowerCase() === spellName.toLowerCase()
+  );
+  if (!spell) return { success: false, active: false };
+  const now = Date.now();
+  if (spell.readyAt > now) {
+    spell.readyAt = 0;
+    spell.source = 'manual';
+    if (spell.name === 'Flash') lane.flashDeathArmed = true;
+    lastFingerprint = '';
+    return { success: true, active: false };
+  }
+  startSpellCd(lane, spell.name, 'manual', { force: true });
+  if (spell.name === 'Flash') lane.flashDeathArmed = false;
+  lastFingerprint = '';
+  return { success: true, active: true };
 }
 
 function focusPrimaryLane(): EnemyLaneSpells | undefined {

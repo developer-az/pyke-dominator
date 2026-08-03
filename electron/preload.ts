@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard-write', text),
     markSummonerSpell: (role: string, spellName: string, opts?: { clear?: boolean }) =>
         ipcRenderer.invoke('summoner-mark', role, spellName, opts),
+    toggleSummonerSpell: (role: string, spellName: string) =>
+        ipcRenderer.invoke('summoner-toggle', role, spellName),
     windowMinimize: () => ipcRenderer.invoke('window-minimize'),
     windowMaximize: () => ipcRenderer.invoke('window-maximize'),
     windowClose: () => ipcRenderer.invoke('window-close'),

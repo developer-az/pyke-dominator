@@ -35,11 +35,22 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
-  // Smooth local countdown between ~4s overlay pushes
+  // Tick only while a spell is on cooldown — idle mounts cost nothing
+  const hasActiveCd = useMemo(
+    () =>
+      lanes.some((lane) =>
+        lane.spells.some((s) =>
+          typeof s.readyAt === 'number' && s.readyAt > 0 ? s.readyAt > now : s.remaining > 0
+        )
+      ),
+    [lanes, now]
+  );
+
   useEffect(() => {
+    if (!lanes.length || !hasActiveCd) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [lanes.length, hasActiveCd]);
 
   const liveLanes = useMemo(
     () =>
@@ -80,7 +91,16 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
   };
 
   const markSpell = (role: OverlayBotSummoner['role'], spellName: string, clear?: boolean) => {
-    void window.electronAPI?.markSummonerSpell?.(role, spellName, clear ? { clear: true } : undefined);
+    if (clear) {
+      void window.electronAPI?.markSummonerSpell?.(role, spellName, { clear: true });
+      return;
+    }
+    // Click toggles the same way as Page Up / Page Down
+    if (window.electronAPI?.toggleSummonerSpell) {
+      void window.electronAPI.toggleSummonerSpell(role, spellName);
+    } else {
+      void window.electronAPI?.markSummonerSpell?.(role, spellName);
+    }
   };
 
   const body = (
@@ -105,8 +125,8 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
                     type="button"
                     title={
                       ready
-                        ? `Click: mark ${sp.name} used`
-                        : `${sp.name} ${formatCd(sp.remaining)}${sp.source ? ` (${sp.source})` : ''} · right-click to clear`
+                        ? `Click / hotkey: start ${sp.name} timer`
+                        : `${sp.name} ${formatCd(sp.remaining)}${sp.source ? ` (${sp.source})` : ''} · click again or Page key to reset`
                     }
                     onClick={() => markSpell(lane.role, sp.name)}
                     onContextMenu={(e) => {
@@ -136,7 +156,7 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
         </button>
         {!compact && (
           <p className="text-[9px] font-mono text-chrome-dim/70 tracking-wide">
-            Click a sum to mark used · right-click to clear · Flash auto only on first death
+            PageUp ADC Flash · PageDown Support Flash (toggle) · click chip to toggle · Flash auto on first death only
           </p>
         )}
       </div>

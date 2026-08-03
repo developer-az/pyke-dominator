@@ -426,7 +426,7 @@ export const OverlayApp: React.FC = () => {
                   </p>
                 )}
                 <p className="text-[8px] font-mono text-chrome-dim/60 tracking-wide pt-0.5">
-                  Flash auto on first death · unlock panel to mark sums
+                  PageUp ADC Flash · PageDown Supp Flash · toggle
                 </p>
               </div>
             </div>

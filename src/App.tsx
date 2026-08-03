@@ -744,7 +744,7 @@ const App: React.FC = () => {
                 </p>
               </div>
               <span className="hud-chip text-chrome-dim hidden sm:inline-flex" style={{ ['--accent' as string]: '#8a919c' }}>
-                β5
+                β6
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -864,7 +864,8 @@ const App: React.FC = () => {
           )}
           {window.electronAPI && (
             <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-chrome-dim/70">
-              Tip: set League to <strong className="text-chrome-dim">Borderless</strong>. Unlock (Ctrl+Shift+U) opens a small draggable panel — game clicks still work around it. Use <strong className="text-chrome-dim">Align HUD</strong> on that panel for fullscreen guide fitting.
+              Tip: League in <strong className="text-chrome-dim">Borderless</strong> · <strong className="text-chrome-dim">Sync LoL</strong> then Align HUD ·{' '}
+              <strong className="text-chrome-dim">PageUp</strong> ADC Flash / <strong className="text-chrome-dim">PageDown</strong> Support Flash (toggle) · Ctrl+Shift+U unlock panel · Ctrl+Shift+H hide
             </p>
           )}
         </header>
@@ -879,7 +880,7 @@ const App: React.FC = () => {
                   <div>
                     <h2 className="hud-heading text-xl text-chrome-bright">Overlay Active</h2>
                     <p className="text-xs text-chrome-dim font-mono tracking-wide mt-1">
-                      Dual-rail HUD: sums on the left, cues / buys on the right. Mark Flash here if auto misses.
+                      Dual-rail HUD: sums left, cues right. PageUp / PageDown toggle ADC / Support Flash (press again to reset).
                     </p>
                   </div>
                 </div>

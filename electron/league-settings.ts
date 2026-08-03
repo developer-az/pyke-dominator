@@ -14,6 +14,9 @@ export interface LeagueHudScales {
 const CANDIDATE_CFG = [
   path.join('C:', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
   path.join('D:', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
+  path.join('E:', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
+  path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
+  path.join(process.env.LOCALAPPDATA || '', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
   path.join(process.env.USERPROFILE || '', 'Riot Games', 'League of Legends', 'Config', 'game.cfg'),
 ];
 

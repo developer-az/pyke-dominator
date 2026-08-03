@@ -76,7 +76,8 @@ jobs:
             ### Try it
             - Install the Windows `.exe` from Assets below
             - Use **Borderless** display mode in League
-            - Connect with the League client open, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) to align HUD/minimap guides
+            - Connect with the League client open, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) → **Align HUD**
+            - **PageUp** = toggle enemy ADC Flash · **PageDown** = toggle enemy Support Flash (press again to reset)
 
             ### Highlights (beta.5)
             - Rebranded to **One Trick** (rune page name: `One Trick`)
