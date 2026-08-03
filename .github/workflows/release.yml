@@ -78,12 +78,11 @@ jobs:
             - Use **Borderless** display mode in League
             - Connect with the League client open, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) to align HUD/minimap guides
 
-            ### Highlights (beta.3)
-            - Patch-accurate item/rune IDs (World Atlas, Noxian boot upgrades, shards)
-            - Control Ward + Oracle Lens in item-set export; boot upgrade chains
-            - Smaller overlay (no scrollbar), short-lived roam cues, prey bait lines
-            - Pantheon Support profile; overlay self-heal mid-game
-            - Vision buy schedule (pinks / sweeper timing)
+            ### Highlights (beta.4)
+            - Yone Mid summoner tracker follows the enemy mid laner (not bot/support)
+            - Patch-accurate item/rune IDs, Noxian boot chains, pinks + Oracle export
+            - Smaller overlay, short roam cues, prey bait lines, Pantheon Support
+            - Overlay self-heal mid-game; vision buy schedule
 
             Feedback welcome — expect rough edges. Beta line started at `1.0.0-beta.1`.
           generateReleaseNotes: true

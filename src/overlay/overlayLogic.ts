@@ -28,7 +28,7 @@ export interface OverlayEnemy {
 }
 
 export interface OverlayBotSummoner {
-  role: 'Bot' | 'Support';
+  role: 'Bot' | 'Support' | 'Mid';
   championName: string;
   championId?: number;
   spells: Array<{

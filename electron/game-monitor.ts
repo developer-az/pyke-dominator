@@ -19,6 +19,7 @@ import {
     serializeSummoners,
     summonerFingerprint,
     consumeSummonerClipboard,
+    setSummonerFocus,
 } from './summoner-tracker';
 import { clipboard } from 'electron';
 
@@ -154,6 +155,9 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
         ? PROFILE_BY_CHAMPION[localName] ?? null
         : 'pyke-support';
 
+    // Yone Mid tracks enemy mid sums; support profiles track bot + support
+    setSummonerFocus(profileHint === 'yone-mid' || isYone ? 'mid' : 'bot');
+
     const enemyPlayers =
         live?.allPlayers?.filter((p) => localPlayer && p.team !== localPlayer.team) || [];
 
@@ -167,7 +171,7 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
         summonerSpells: p.summonerSpells,
     }));
 
-    // Keep bot-lane summoner timers current from live positions + kill events
+    // Keep lane summoner timers current from live positions + kill events
     ingestLivePlayers(enemies);
     const nameToChampion = new Map<string, string>();
     for (const p of live?.allPlayers || []) {

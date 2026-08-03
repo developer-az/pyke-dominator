@@ -1,6 +1,10 @@
 /**
- * Tracks enemy Bot + Support summoner spells from champ select / live client
- * and estimates CDs from kill/death events (Live Client has no spell-cast API).
+ * Tracks enemy summoner spells from champ select / live client and estimates
+ * CDs from kill/death events (Live Client has no spell-cast API).
+ *
+ * Focus:
+ * - Support profiles → Bot + Support
+ * - Yone Mid → Mid only
  */
 
 export interface TrackedSpell {
@@ -12,12 +16,18 @@ export interface TrackedSpell {
   source?: 'kill' | 'death' | 'inferred' | 'manual';
 }
 
-export interface EnemyBotSpells {
-  role: 'Bot' | 'Support';
+export type TrackedRole = 'Bot' | 'Support' | 'Mid';
+export type SummonerFocus = 'bot' | 'mid';
+
+export interface EnemyLaneSpells {
+  role: TrackedRole;
   championName: string;
   championId?: number;
   spells: TrackedSpell[];
 }
+
+/** @deprecated alias — prefer EnemyLaneSpells */
+export type EnemyBotSpells = EnemyLaneSpells;
 
 interface SpellDef {
   id: number;
@@ -38,22 +48,31 @@ const SPELLS: Record<number, SpellDef> = {
   21: { id: 21, name: 'Barrier', short: 'Barrier', baseCd: 180 },
 };
 
-/** Common ADCs — role fallback when Live Client omits BOTTOM. */
 const ADC_HINTS = new Set(
   [
-    'Ashe', 'Caitlyn', 'Jinx', 'KaiSa', "Kaisa", 'Ezreal', 'Jhin', 'Lucian', 'MissFortune',
+    'Ashe', 'Caitlyn', 'Jinx', 'KaiSa', 'Kaisa', 'Ezreal', 'Jhin', 'Lucian', 'MissFortune',
     'Sivir', 'Tristana', 'Twitch', 'Varus', 'Vayne', 'Xayah', 'Aphelios', 'Draven', 'Kalista',
     'KogMaw', 'Samira', 'Zeri', 'Nilah', 'Smolder', 'Yunara', 'Corki',
   ].map((n) => n.toLowerCase().replace(/[^a-z]/g, ''))
 );
 
-/** Common supports — role fallback when Live Client omits UTILITY. */
 const SUPPORT_HINTS = new Set(
   [
     'Pyke', 'Thresh', 'Nautilus', 'Leona', 'Blitzcrank', 'Rakan', 'Alistar', 'Braum', 'Taric',
     'Rell', 'Nami', 'Lulu', 'Janna', 'Soraka', 'Yuumi', 'Sona', 'Milio', 'Renata', 'RenataGlasc',
     'Karma', 'Zyra', 'Brand', 'Xerath', 'Lux', 'Morgana', 'Swain', 'Neeko', 'Zilean', 'Bard',
     'Senna', 'Pantheon', 'Mel', 'Seraphine', 'Shaco',
+  ].map((n) => n.toLowerCase().replace(/[^a-z]/g, ''))
+);
+
+/** Common mids — fallback when Live Client omits MIDDLE. */
+const MID_HINTS = new Set(
+  [
+    'Ahri', 'Akali', 'Anivia', 'Annie', 'AurelionSol', 'Azir', 'Cassiopeia', 'Corki', 'Diana',
+    'Ekko', 'Fizz', 'Galio', 'Hwei', 'Irelia', 'Kassadin', 'Katarina', 'Leblanc', 'Lissandra',
+    'Lux', 'Malzahar', 'Neeko', 'Orianna', 'Qiyana', 'Ryze', 'Sylas', 'Syndra', 'Talon',
+    'TwistedFate', 'Veigar', 'Vex', 'Viktor', 'Vladimir', 'Xerath', 'Yasuo', 'Yone', 'Zed',
+    'Ziggs', 'Zoe', 'Aurora', 'Mel',
   ].map((n) => n.toLowerCase().replace(/[^a-z]/g, ''))
 );
 
@@ -87,81 +106,101 @@ function toTracked(def: SpellDef, readyAt = 0): TrackedSpell {
   return { spellId: def.id, name: def.name, short: def.short, baseCd: def.baseCd, readyAt };
 }
 
-let botLane: EnemyBotSpells[] = [];
+let trackedLanes: EnemyLaneSpells[] = [];
 let processedEventIds = new Set<number>();
 let lastFingerprint = '';
-/** ADC Flash/Heal/Barrier that just came back — for clipboard auto-copy. */
+/** Focus lane Flash/sums coming back — clipboard auto-copy. */
 let pendingClipboardText: string | null = null;
 const prevReady = new Map<string, boolean>();
+/** Active focus for serialize / clipboard (set from game-monitor). */
+let activeFocus: SummonerFocus = 'bot';
 
-export function getEnemyBotSummoners(): EnemyBotSpells[] {
-  return botLane;
+export function setSummonerFocus(focus: SummonerFocus): void {
+  activeFocus = focus === 'mid' ? 'mid' : 'bot';
+}
+
+export function getSummonerFocus(): SummonerFocus {
+  return activeFocus;
+}
+
+export function getEnemyBotSummoners(): EnemyLaneSpells[] {
+  return filterByFocus(trackedLanes, activeFocus);
 }
 
 export function resetSummonerTracker(): void {
-  botLane = [];
+  trackedLanes = [];
   processedEventIds = new Set();
   lastFingerprint = '';
   pendingClipboardText = null;
   prevReady.clear();
+  activeFocus = 'bot';
 }
 
-/** Drain one-shot clipboard payload (ADC sums coming back up). */
 export function consumeSummonerClipboard(): string | null {
   const t = pendingClipboardText;
   pendingClipboardText = null;
   return t;
 }
 
-function upsertLane(role: 'Bot' | 'Support', championName: string, championId: number | undefined, defs: SpellDef[]): void {
+function filterByFocus(lanes: EnemyLaneSpells[], focus: SummonerFocus): EnemyLaneSpells[] {
+  if (focus === 'mid') return lanes.filter((l) => l.role === 'Mid');
+  return lanes.filter((l) => l.role === 'Bot' || l.role === 'Support');
+}
+
+function upsertLane(
+  role: TrackedRole,
+  championName: string,
+  championId: number | undefined,
+  defs: SpellDef[]
+): void {
   if (!championName && !defs.length) return;
-  const existing = botLane.find((b) => b.role === role);
-  // Prefer matching by champion if role slot already holds a different champ (swap)
-  const byChamp = botLane.find((b) => normChamp(b.championName) === normChamp(championName) && b.role !== role);
+  const existing = trackedLanes.find((b) => b.role === role);
+  const byChamp = trackedLanes.find(
+    (b) => normChamp(b.championName) === normChamp(championName) && b.role !== role
+  );
   if (byChamp && !existing) {
-    // Champion moved roles — drop old role entry
-    botLane = botLane.filter((b) => b !== byChamp);
+    trackedLanes = trackedLanes.filter((b) => b !== byChamp);
   }
   const spells = defs.map((d) => {
     const prev = existing?.spells.find((s) => s.name === d.name || s.spellId === d.id);
     return prev ? { ...toTracked(d), readyAt: prev.readyAt, source: prev.source } : toTracked(d);
   });
-  const entry: EnemyBotSpells = { role, championName, championId, spells };
+  const entry: EnemyLaneSpells = { role, championName, championId, spells };
   if (existing) {
     Object.assign(existing, entry);
   } else {
-    botLane.push(entry);
+    trackedLanes.push(entry);
   }
 }
 
-function inferRoleFromSpells(defs: SpellDef[]): 'Bot' | 'Support' | null {
+function inferRoleFromSpells(defs: SpellDef[]): TrackedRole | null {
   const names = new Set(defs.map((d) => d.name));
+  // Strong signals only — Ignite alone is mid assassin OR support, so defer to champ/position
   if (names.has('Heal') || names.has('Barrier')) return 'Bot';
-  if (names.has('Exhaust') || names.has('Ignite')) return 'Support';
+  if (names.has('Exhaust')) return 'Support';
+  if (names.has('Teleport') && !names.has('Heal')) return 'Mid';
   return null;
 }
 
-function inferRoleFromChamp(championName: string): 'Bot' | 'Support' | null {
+function inferRoleFromChamp(championName: string): TrackedRole | null {
   const n = normChamp(championName);
   if (ADC_HINTS.has(n)) return 'Bot';
   if (SUPPORT_HINTS.has(n)) return 'Support';
+  if (MID_HINTS.has(n)) return 'Mid';
   return null;
 }
 
-function resolveRole(
-  pos: string,
-  championName: string,
-  defs: SpellDef[]
-): 'Bot' | 'Support' | null {
+function resolveRole(pos: string, championName: string, defs: SpellDef[]): TrackedRole | null {
   const p = pos.toUpperCase();
   if (p === 'BOTTOM') return 'Bot';
   if (p === 'UTILITY' || p === 'SUPPORT') return 'Support';
+  if (p === 'MIDDLE' || p === 'MID') return 'Mid';
   // Skip definite other roles
-  if (p === 'TOP' || p === 'JUNGLE' || p === 'MIDDLE' || p === 'MID') return null;
+  if (p === 'TOP' || p === 'JUNGLE') return null;
   return inferRoleFromSpells(defs) || inferRoleFromChamp(championName);
 }
 
-/** Champ select: cache enemy BOTTOM + UTILITY spell ids. */
+/** Champ select: cache enemy BOTTOM + UTILITY + MIDDLE spell ids. */
 export function ingestChampSelectTeam(
   theirTeam: Array<{
     championId?: number;
@@ -183,7 +222,7 @@ export function ingestChampSelectTeam(
   }
 }
 
-/** Live client: refresh spell names for enemy bot laners by position / hints. */
+/** Live client: refresh spell names for tracked laners by position / hints. */
 export function ingestLivePlayers(
   enemies: Array<{
     championName: string;
@@ -194,8 +233,12 @@ export function ingestLivePlayers(
     };
   }>
 ): void {
-  // First pass: collect candidates with spell defs
-  const candidates: Array<{ champ: string; pos: string; defs: SpellDef[]; role: 'Bot' | 'Support' | null }> = [];
+  const candidates: Array<{
+    champ: string;
+    pos: string;
+    defs: SpellDef[];
+    role: TrackedRole | null;
+  }> = [];
   for (const e of enemies) {
     const defs = [
       defFromName(e.summonerSpells?.summonerSpellOne?.displayName),
@@ -210,13 +253,11 @@ export function ingestLivePlayers(
   for (const c of candidates) {
     if (!c.role) continue;
     if (c.defs.length === 0) {
-      const existing = botLane.find((b) => b.role === c.role);
+      const existing = trackedLanes.find((b) => b.role === c.role);
       if (existing) {
-        // Upgrade placeholder #id names once live client has real champ names
         if (existing.championName.startsWith('#') || !existing.championName) {
           existing.championName = c.champ;
         } else if (normChamp(existing.championName) !== normChamp(c.champ)) {
-          // Role slot champ changed (rare) — keep spells if same role
           existing.championName = c.champ;
         }
       }
@@ -225,25 +266,27 @@ export function ingestLivePlayers(
     upsertLane(c.role, c.champ, undefined, c.defs);
   }
 
-  // If still missing a role, fill from remaining candidates by spell/champ hints
-  for (const role of ['Bot', 'Support'] as const) {
-    if (botLane.some((b) => b.role === role)) continue;
-    const hit = candidates.find((c) => !c.role && (inferRoleFromSpells(c.defs) === role || inferRoleFromChamp(c.champ) === role));
+  for (const role of ['Bot', 'Support', 'Mid'] as const) {
+    if (trackedLanes.some((b) => b.role === role)) continue;
+    const hit = candidates.find(
+      (c) =>
+        !c.role &&
+        (inferRoleFromSpells(c.defs) === role || inferRoleFromChamp(c.champ) === role)
+    );
     if (hit && hit.defs.length) upsertLane(role, hit.champ, undefined, hit.defs);
   }
 }
 
-function startSpellCd(lane: EnemyBotSpells, spellName: string, source: TrackedSpell['source']): void {
+function startSpellCd(lane: EnemyLaneSpells, spellName: string, source: TrackedSpell['source']): void {
   const spell = lane.spells.find((s) => s.name === spellName);
   if (!spell) return;
   const now = Date.now();
-  // Don't refresh if already ticking with >30s left (avoid double-fire)
   if (spell.readyAt > now + 30_000) return;
   spell.readyAt = now + spell.baseCd * 1000;
   spell.source = source;
 }
 
-function laneMatchesChampion(lane: EnemyBotSpells, championName: string | undefined): boolean {
+function laneMatchesChampion(lane: EnemyLaneSpells, championName: string | undefined): boolean {
   if (!championName) return false;
   return normChamp(lane.championName) === normChamp(championName);
 }
@@ -259,9 +302,9 @@ interface LiveEvent {
 
 /**
  * Heuristics (no spell-cast events in Live Client):
- * - Killer among tracked bot laners → start Ignite if they have it
- * - Assister with Exhaust → start Exhaust
- * - Victim among tracked → start Flash (often burned); Heal/Barrier only if they own them
+ * - Killer among tracked → Ignite
+ * - Assister with Exhaust/Ignite → start those
+ * - Victim among tracked → Flash (+ Heal/Barrier if owned)
  */
 export function ingestLiveEvents(
   events: LiveEvent[] | undefined,
@@ -282,15 +325,16 @@ export function ingestLiveEvents(
     const killerChamp = lookup(ev.KillerName);
     const victimChamp = lookup(ev.VictimName);
 
-    for (const lane of botLane) {
+    for (const lane of trackedLanes) {
       if (laneMatchesChampion(lane, killerChamp)) {
         startSpellCd(lane, 'Ignite', 'kill');
       }
       if (laneMatchesChampion(lane, victimChamp)) {
         startSpellCd(lane, 'Flash', 'death');
-        // Only start defensive sums they actually own
         startSpellCd(lane, 'Heal', 'death');
         startSpellCd(lane, 'Barrier', 'death');
+        startSpellCd(lane, 'Ghost', 'death');
+        startSpellCd(lane, 'Cleanse', 'death');
       }
       for (const a of ev.Assisters || []) {
         const assistChamp = lookup(a);
@@ -302,16 +346,25 @@ export function ingestLiveEvents(
     }
   }
 
-  detectAdcSumsComingUp();
+  detectFocusSumsComingUp();
 }
 
-function detectAdcSumsComingUp(now = Date.now()): void {
-  const adc = botLane.find((b) => b.role === 'Bot');
-  if (!adc) return;
+function focusPrimaryLane(): EnemyLaneSpells | undefined {
+  if (activeFocus === 'mid') return trackedLanes.find((b) => b.role === 'Mid');
+  return trackedLanes.find((b) => b.role === 'Bot');
+}
+
+function detectFocusSumsComingUp(now = Date.now()): void {
+  const primary = focusPrimaryLane();
+  if (!primary) return;
+  const watch =
+    activeFocus === 'mid'
+      ? ['Flash', 'Teleport', 'Ignite', 'Cleanse', 'Ghost']
+      : ['Flash', 'Heal', 'Barrier'];
   const parts: string[] = [];
-  for (const s of adc.spells) {
-    if (!['Flash', 'Heal', 'Barrier'].includes(s.name)) continue;
-    const key = `${adc.role}:${s.name}`;
+  for (const s of primary.spells) {
+    if (!watch.includes(s.name)) continue;
+    const key = `${primary.role}:${s.name}`;
     const ready = s.readyAt <= now;
     const wasReady = prevReady.get(key);
     prevReady.set(key, ready);
@@ -320,14 +373,15 @@ function detectAdcSumsComingUp(now = Date.now()): void {
     }
   }
   if (parts.length) {
-    pendingClipboardText = `ADC ${adc.championName}: ${parts.join(' · ')} (${new Date().toLocaleTimeString()})`;
+    const label = activeFocus === 'mid' ? 'MID' : 'ADC';
+    pendingClipboardText = `${label} ${primary.championName}: ${parts.join(' · ')} (${new Date().toLocaleTimeString()})`;
   }
 }
 
-/** Compact fingerprint for overlay IPC dedupe (bucket remaining CD to 2s). */
 export function summonerFingerprint(now = Date.now()): string {
-  detectAdcSumsComingUp(now);
-  const parts = botLane.map((lane) => {
+  detectFocusSumsComingUp(now);
+  const lanes = filterByFocus(trackedLanes, activeFocus);
+  const parts = lanes.map((lane) => {
     const spells = lane.spells
       .map((s) => {
         const rem = s.readyAt > now ? Math.ceil((s.readyAt - now) / 2000) : 0;
@@ -336,7 +390,7 @@ export function summonerFingerprint(now = Date.now()): string {
       .join(',');
     return `${lane.role}:${lane.championName}:{${spells}}`;
   });
-  return parts.join('|');
+  return `${activeFocus}|${parts.join('|')}`;
 }
 
 export function summonerPayloadChanged(): boolean {
@@ -346,9 +400,12 @@ export function summonerPayloadChanged(): boolean {
   return true;
 }
 
-/** Snapshot for IPC — remaining seconds computed at read time. */
-export function serializeSummoners(now = Date.now()): Array<{
-  role: 'Bot' | 'Support';
+/** Snapshot for IPC — remaining seconds computed at read time, filtered by focus. */
+export function serializeSummoners(
+  now = Date.now(),
+  focus: SummonerFocus = activeFocus
+): Array<{
+  role: TrackedRole;
   championName: string;
   championId?: number;
   spells: Array<{
@@ -360,8 +417,8 @@ export function serializeSummoners(now = Date.now()): Array<{
     source?: string;
   }>;
 }> {
-  detectAdcSumsComingUp(now);
-  return botLane.map((lane) => ({
+  detectFocusSumsComingUp(now);
+  return filterByFocus(trackedLanes, focus).map((lane) => ({
     role: lane.role,
     championName: lane.championName,
     championId: lane.championId,
@@ -379,13 +436,14 @@ export function serializeSummoners(now = Date.now()): Array<{
   }));
 }
 
-/** Format ADC timers for manual clipboard copy. */
+/** Format primary-lane timers for manual clipboard copy. */
 export function formatAdcClipboard(now = Date.now()): string | null {
-  const adc = botLane.find((b) => b.role === 'Bot');
-  if (!adc) return null;
-  const bits = adc.spells.map((s) => {
+  const primary = focusPrimaryLane();
+  if (!primary) return null;
+  const bits = primary.spells.map((s) => {
     const rem = s.readyAt > now ? Math.ceil((s.readyAt - now) / 1000) : 0;
     return rem > 0 ? `${s.short} ${Math.floor(rem / 60)}:${String(rem % 60).padStart(2, '0')}` : `${s.short} UP`;
   });
-  return `ADC ${adc.championName}: ${bits.join(' · ')}`;
+  const label = activeFocus === 'mid' ? 'MID' : 'ADC';
+  return `${label} ${primary.championName}: ${bits.join(' · ')}`;
 }
