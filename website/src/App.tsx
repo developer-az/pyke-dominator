@@ -13,17 +13,17 @@ const features = [
   {
     kicker: '01 — Matchup',
     title: 'Know the lane before the load screen.',
-    body: 'Enemy roles lock in and Dominator answers with items, runes, and a dominance read shaped for how you actually play the pick — not a generic op.gg dump.',
+    body: 'Enemy roles lock in and One Trick answers with items, runes, and a dominance read shaped for how you actually play the pick — not a generic dump.',
   },
   {
     kicker: '02 — Export',
     title: 'One click into the League Client.',
-    body: 'Runes and item sets land in LCU without copy-paste theater. Stay in champ select. Stay in the fight for tempo.',
+    body: 'Runes land as One Trick. Item sets follow your profile. Stay in champ select. Stay in the fight for tempo.',
   },
   {
     kicker: '03 — Overlay',
     title: 'Chrome that respects the map.',
-    body: 'Ability and minimap frames, summoner timing, vision cues. Sync HUD scale from League, calibrate by the pixel, then lock it click-through so it never steals focus.',
+    body: 'Summoner timing, vision cues, roam windows. Sync HUD scale from League, calibrate by the pixel, then lock click-through so it never steals focus.',
   },
 ]
 
@@ -34,11 +34,11 @@ const profiles = [
   },
   {
     name: 'Pantheon Support',
-    line: 'Off-pick when Pyke is banned — still a Dominator lane plan.',
+    line: 'Off-pick when Pyke is banned — still a One Trick lane plan.',
   },
   {
     name: 'Yone Mid',
-    line: 'Mid profile with jungle-aware context when the game asks for it.',
+    line: 'Mid profile that tracks the enemy mid laner — jungle-aware when the draft asks.',
   },
 ]
 
@@ -47,6 +47,8 @@ const steps = [
   { n: '02', title: 'Lock in', body: 'Champ select fills enemies as picks land. Review the loadout.' },
   { n: '03', title: 'Export & play', body: 'Push runes and items into the client. Overlay appears when the match starts.' },
 ]
+
+const base = import.meta.env.BASE_URL
 
 function DownloadButtons({ release }: { release: ReleaseInfo | null }) {
   const href = release?.downloadUrl || RELEASES_URL
@@ -85,7 +87,7 @@ export default function App() {
         <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
           <a href="#top" className="flex items-center gap-2.5 text-chrome-bright no-underline">
             <ChromeMark size={22} />
-            <span className="font-display text-lg tracking-[0.08em]">Dominator</span>
+            <span className="font-display text-lg tracking-[0.08em]">One Trick</span>
           </a>
           <nav className="hidden items-center gap-7 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-dim sm:flex">
             <a href="#features" className="hover:text-chrome-bright">
@@ -104,14 +106,15 @@ export default function App() {
         </header>
 
         <main id="top">
-          {/* Hero — brand first, one composition */}
-          <section className="relative mx-auto grid min-h-[min(92vh,920px)] w-full max-w-6xl items-center gap-12 px-5 pb-20 pt-6 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:pb-28">
-            <div>
+          {/* Hero — brand + real app screenshot as one composition */}
+          <section className="relative mx-auto w-full max-w-6xl px-5 pb-16 pt-4 sm:px-8 sm:pb-24">
+            <div className="max-w-2xl">
               <p className="animate-fade-up font-mono text-[11px] uppercase tracking-[0.28em] text-chrome-dim">
                 Windows · League of Legends
+                {release?.prerelease ? ' · Public beta' : ''}
               </p>
               <h1 className="animate-fade-up mt-4 font-display text-[clamp(3.2rem,9vw,5.8rem)] leading-[0.92] tracking-[0.02em] text-chrome-bright">
-                Dominator
+                One Trick
               </h1>
               <p
                 className="animate-fade-up mt-5 max-w-md text-lg leading-relaxed text-chrome-silver/85 sm:text-xl"
@@ -123,34 +126,47 @@ export default function App() {
                 <DownloadButtons release={release} />
                 {release && (
                   <p className="mt-3 font-mono text-[11px] tracking-[0.08em] text-chrome-dim">
-                    Latest: {release.assetName}
+                    Latest{release.prerelease ? ' beta' : ''}: {release.assetName}
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="animate-fade-up" style={{ animationDelay: '180ms' }}>
-              <HudPreview />
+            <div className="animate-fade-up mt-12" style={{ animationDelay: '180ms' }}>
+              <HudPreview
+                src={`${base}screenshots/hero-app.png`}
+                alt="One Trick app — enemy squad picker and Pyke Support standby"
+                caption="In-app · Pyke Support · enemy squad"
+              />
             </div>
           </section>
 
           <div className="chrome-rule mx-auto w-full max-w-6xl" />
 
-          {/* Pitch */}
+          {/* Pitch + second real shot */}
           <section className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8 sm:py-28">
-            <Reveal>
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-blood">
-                Why it exists
-              </p>
-              <h2 className="mt-4 max-w-3xl font-display text-3xl leading-tight tracking-wide text-chrome-bright sm:text-4xl">
-                Built for the minutes where a README can’t sit next to you.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-relaxed text-chrome-dim sm:text-lg">
-                Dominator is a personal League companion — not a wall of markdown. It watches champ select,
-                shapes a loadout for the matchup, pushes it into the client, and keeps a quiet chrome HUD
-                alive while you play. Pyke Support first; Pantheon and Yone when the draft asks.
-              </p>
-            </Reveal>
+            <div className="grid items-center gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-14">
+              <Reveal>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-blood">
+                  Why it exists
+                </p>
+                <h2 className="mt-4 max-w-xl font-display text-3xl leading-tight tracking-wide text-chrome-bright sm:text-4xl">
+                  Built for the minutes where a README can’t sit next to you.
+                </h2>
+                <p className="mt-5 max-w-lg text-base leading-relaxed text-chrome-dim sm:text-lg">
+                  One Trick is a personal League companion — not a wall of markdown. It watches champ select,
+                  shapes a loadout for the matchup, pushes it into the client, and keeps a quiet chrome HUD
+                  alive while you play. Pyke Support first; Pantheon and Yone when the draft asks.
+                </p>
+              </Reveal>
+              <Reveal delayMs={80}>
+                <HudPreview
+                  src={`${base}screenshots/panels-ally.png`}
+                  alt="One Trick app — ally lanes and awaiting data"
+                  caption="In-app · ally lanes · analysis standby"
+                />
+              </Reveal>
+            </div>
           </section>
 
           {/* Features */}
@@ -229,17 +245,22 @@ export default function App() {
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(242,244,247,0.08),transparent_50%),radial-gradient(ellipse_at_90%_100%,rgba(155,28,46,0.16),transparent_45%)]" />
                 <div className="relative max-w-xl">
                   <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-dim">
-                    Get Dominator
+                    Get One Trick
                   </p>
                   <h2 className="mt-3 font-display text-3xl tracking-wide text-chrome-bright sm:text-4xl">
                     Download the latest Windows build.
                   </h2>
                   <p className="mt-4 text-base leading-relaxed text-chrome-dim">
-                    Pulled live from GitHub Releases — Setup installer preferred. Portable builds land on
-                    the releases page when available.
+                    Pulled live from GitHub Releases — including public betas. Setup installer preferred.
                   </p>
                   <div className="mt-8">
                     <DownloadButtons release={release} />
+                    {release && (
+                      <p className="mt-3 font-mono text-[11px] tracking-[0.08em] text-chrome-dim">
+                        {release.name}
+                        {release.prerelease ? ' · pre-release' : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -251,7 +272,7 @@ export default function App() {
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div className="flex items-center gap-2 text-chrome-dim">
               <ChromeMark size={16} />
-              <span className="font-display tracking-wide text-chrome-silver">Dominator</span>
+              <span className="font-display tracking-wide text-chrome-silver">One Trick</span>
             </div>
             <p className="font-mono text-[11px] tracking-[0.12em] text-chrome-dim">
               Unofficial fan tool · Not affiliated with Riot Games
