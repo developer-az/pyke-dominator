@@ -42,17 +42,65 @@ export const connectToLCU = (): Promise<{ port: string; token: string; protocol:
 
 /** Refresh credentials before write ops — tokens rotate when the client restarts. */
 export const ensureLCUConnected = async (): Promise<void> => {
-    try {
-        if (credentials) {
+    if (credentials) {
+        try {
             // Cheap health check; 401/connection errors force reconnect
-            await makeLCURequest('GET', '/lol-summoner/v1/current-summoner', undefined, 2500);
+            await makeLCURequest('GET', '/lol-summoner/v1/current-summoner', undefined, 3000);
             return;
+        } catch {
+            credentials = null;
         }
-    } catch {
-        credentials = null;
     }
     await connectToLCU();
 };
+
+/** Force a fresh credential read, then verify the client answers. */
+async function reconnectLCU(): Promise<void> {
+    credentials = null;
+    await connectToLCU();
+    await makeLCURequest('GET', '/lol-summoner/v1/current-summoner', undefined, 4000);
+}
+
+interface CurrentSummoner {
+    summonerId?: number;
+    accountId?: number;
+    displayName?: string;
+    /** false while the client is still on the login / patcher screen */
+    summonerLevel?: number;
+}
+
+/**
+ * The client answers /current-summoner with an empty object while it is still
+ * booting or sitting on the login screen. Every write op depends on summonerId,
+ * so resolve it once with a couple of short retries and a clear error.
+ */
+async function resolveCurrentSummoner(): Promise<CurrentSummoner> {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const summoner = (await makeLCURequest(
+                'GET',
+                '/lol-summoner/v1/current-summoner',
+                undefined,
+                5000
+            )) as CurrentSummoner | null;
+            if (summoner?.summonerId) return summoner;
+            lastError = new Error('League client has no active summoner yet');
+        } catch (error) {
+            lastError = error;
+            try {
+                await reconnectLCU();
+            } catch {
+                // fall through to the retry delay
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    const detail = lastError instanceof Error ? ` (${lastError.message})` : '';
+    throw new Error(
+        `Could not read your summoner from the League client${detail} — finish logging in, then retry.`
+    );
+}
 
 interface LCURunePage {
     name: string;
@@ -61,6 +109,10 @@ interface LCURunePage {
     subStyleId?: number;
     selectedPerkIds?: number[];
     current?: boolean;
+    isDeletable?: boolean;
+    isEditable?: boolean;
+    isActive?: boolean;
+    order?: number;
 }
 
 export interface ExportRunePagePayload {
@@ -71,33 +123,103 @@ export interface ExportRunePagePayload {
     current?: boolean;
 }
 
+/** Removed from client shard rows (26.x+). Exporting these makes LCU reject the page. */
+const DEAD_SHARD_FALLBACK: Record<number, number> = {
+    5002: 5011, // Armor → flat Health (defense)
+    5003: 5011, // Magic Resist → flat Health (defense)
+};
+
+function sanitizePerkIds(ids: number[]): number[] {
+    return ids.map((id) => DEAD_SHARD_FALLBACK[id] ?? id);
+}
+
 export const exportRunePage = async (runePage: ExportRunePagePayload): Promise<void> => {
     await ensureLCUConnected();
 
     if (!Array.isArray(runePage.selectedPerkIds) || runePage.selectedPerkIds.length !== 9) {
         throw new Error(`Invalid rune page: expected 9 perk IDs, got ${runePage.selectedPerkIds?.length ?? 0}`);
     }
-
-    const currentPages = await makeLCURequest('GET', '/lol-perks/v1/pages');
-    const pages = Array.isArray(currentPages) ? (currentPages as LCURunePage[]) : [];
-
-    const existingPage = pages.find((p) => p.name === runePage.name);
-    if (existingPage?.id != null) {
-        await makeLCURequest('DELETE', `/lol-perks/v1/pages/${existingPage.id}`);
+    if (!runePage.primaryStyleId || !runePage.subStyleId) {
+        throw new Error('Invalid rune page: missing primary or secondary tree');
     }
 
-    await makeLCURequest('POST', '/lol-perks/v1/pages', {
+    const selectedPerkIds = sanitizePerkIds(runePage.selectedPerkIds);
+
+    const readPages = async (): Promise<LCURunePage[]> => {
+        const pages = await makeLCURequest('GET', '/lol-perks/v1/pages', undefined, 6000);
+        return Array.isArray(pages) ? (pages as LCURunePage[]) : [];
+    };
+
+    let pages = await readPages();
+
+    // Replace our own page if it already exists
+    for (const page of pages.filter((p) => p.name === runePage.name && p.id != null)) {
+        try {
+            await makeLCURequest('DELETE', `/lol-perks/v1/pages/${page.id}`, undefined, 6000);
+        } catch {
+            // Non-fatal: the create below will surface the real problem
+        }
+    }
+
+    const body = {
         name: runePage.name,
         primaryStyleId: runePage.primaryStyleId,
         subStyleId: runePage.subStyleId,
-        selectedPerkIds: runePage.selectedPerkIds,
+        selectedPerkIds,
         current: runePage.current !== false,
-    });
+    };
+
+    const create = async () => makeLCURequest('POST', '/lol-perks/v1/pages', body, 8000);
+
+    try {
+        await create();
+    } catch (firstError) {
+        const message = firstError instanceof Error ? firstError.message : String(firstError);
+
+        // "Max pages reached" is the single most common export failure — free a
+        // slot by deleting the oldest page the client says we are allowed to
+        // delete, then try again.
+        const outOfSlots = /max|limit|slot/i.test(message);
+        if (outOfSlots) {
+            pages = await readPages();
+            const victim = pages
+                .filter((p) => p.isDeletable !== false && !p.current && !p.isActive)
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
+            if (victim?.id != null) {
+                await makeLCURequest('DELETE', `/lol-perks/v1/pages/${victim.id}`, undefined, 6000);
+                await create();
+            } else {
+                throw new Error(
+                    'Rune page limit reached and no page could be deleted — delete a rune page in the client and retry.'
+                );
+            }
+        } else {
+            // Token may have rotated (client restart) — reconnect once and retry.
+            await reconnectLCU();
+            await create();
+        }
+    }
+
+    // Verify: a 2xx from the client is not proof the page survived validation.
+    const after = await readPages();
+    const saved = after.find((p) => p.name === runePage.name);
+    if (!saved) {
+        throw new Error('League accepted the request but the rune page is not in your collection — try again with the client on the home screen.');
+    }
+    if (runePage.current !== false && saved.id != null && !saved.current) {
+        try {
+            await makeLCURequest('PUT', '/lol-perks/v1/currentpage', saved.id, 5000);
+        } catch {
+            // Selecting the page is a nicety — the export itself already worked.
+        }
+    }
 };
 
 interface ItemSetBlock {
     type: string;
     items: Array<{ id: string; count: number }>;
+    showIfSummonerSpell: string;
+    hideIfSummonerSpell: string;
 }
 
 interface LCUItemSetPage {
@@ -128,79 +250,114 @@ export interface ExportBuildPayload {
     boots: { id: string };
     situational: Array<{ id: string }>;
     buildPath: Array<{ id: string }>;
-    /** LCU champion key (Pyke 555, Yone 777). Defaults to Pyke. */
+    /** LCU champion key (Pyke 555, Pantheon 80, Yone 777). Defaults to Pyke. */
     championKey?: number;
     /** Item-set title shown in shop. */
     title?: string;
 }
 
 /**
+ * Items removed from SR shop / not valid in item-sets (patch 26.9+).
+ * Exporting these can make LCU reject the entire collection PUT.
+ * Verified against Data Dragon 16.15.1.
+ */
+const DEAD_ITEM_IDS = new Set([
+    '3117', // Mobility Boots — removed (use 3170 Swiftmarch)
+    '6701', // Opportunity — removed (use 6699 Voltaic / 3142 Youmuu's)
+    '3867', // Bounty of Worlds — quest mid-step, not a starter (use 3865 World Atlas)
+]);
+
+/** Boot recommendation → shop chain IDs (must stay in sync with src/logic/bootChains.ts). */
+const BOOT_CHAINS: Record<string, string[]> = {
+    '3170': ['1001', '3009', '3170'],
+    '3009': ['1001', '3009', '3170'],
+    '3171': ['1001', '3158', '3171'],
+    '3158': ['1001', '3158', '3171'],
+    '3173': ['1001', '3111', '3173'],
+    '3111': ['1001', '3111', '3173'],
+    '3174': ['1001', '3047', '3174'],
+    '3047': ['1001', '3047', '3174'],
+    '3172': ['1001', '3006', '3172'],
+    '3006': ['1001', '3006', '3172'],
+};
+
+function expandBootChain(boots: { id: string } | undefined): Array<{ id: string }> {
+    if (!boots?.id) return [];
+    const chain = BOOT_CHAINS[boots.id];
+    if (chain) return chain.map((id) => ({ id }));
+    return [{ id: '1001' }, { id: boots.id }];
+}
+
+/** LCU rejects the whole collection if any item id is bad / unpurchasable junk. */
+function sanitizeItems(items: Array<{ id: string }> | undefined): Array<{ id: string; count: number }> {
+    const seen = new Set<string>();
+    const out: Array<{ id: string; count: number }> = [];
+    for (const item of items || []) {
+        const id = String(item?.id ?? '').trim();
+        if (!/^\d+$/.test(id) || id === '0') continue;
+        if (DEAD_ITEM_IDS.has(id)) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({ id, count: 1 });
+    }
+    return out;
+}
+
+function block(type: string, items: Array<{ id: string; count: number }>): ItemSetBlock {
+    return { type, items, showIfSummonerSpell: '', hideIfSummonerSpell: '' };
+}
+
+/**
  * Export item set via the real LCU collection API:
  * GET/PUT `/lol-item-sets/v1/item-sets/{summonerId}/sets`
  *
- * LCU requires each page to have a valid UUID `uid` — missing uid is the most
- * common silent PUT rejection.
+ * The client validates the *entire* collection on write, so a single malformed
+ * field (missing uid, non-numeric item id, wrong accountId) silently drops the
+ * whole payload. Everything below is about making that impossible, and about
+ * proving afterwards that the set really landed.
  */
 export const exportItemSet = async (build: ExportBuildPayload): Promise<void> => {
     await ensureLCUConnected();
 
-    const currentSummoner = await makeLCURequest('GET', '/lol-summoner/v1/current-summoner') as {
-        summonerId?: number;
-        accountId?: number;
-    } | null;
-    if (!currentSummoner?.summonerId) {
-        throw new Error('Could not get summoner ID from LCU — finish logging into League first');
-    }
-
-    const summonerId = currentSummoner.summonerId;
+    const currentSummoner = await resolveCurrentSummoner();
+    const summonerId = currentSummoner.summonerId!;
     const championKey = build.championKey ?? 555;
     const setTitle = build.title || 'Pyke Dominator';
+    const setsEndpoint = `/lol-item-sets/v1/item-sets/${summonerId}/sets`;
 
-    const existing = await makeLCURequest(
-        'GET',
-        `/lol-item-sets/v1/item-sets/${summonerId}/sets`,
-        undefined,
-        8000
-    ) as LCUItemSetsCollection | null;
+    const readCollection = async (): Promise<LCUItemSetsCollection | null> =>
+        (await makeLCURequest('GET', setsEndpoint, undefined, 8000)) as LCUItemSetsCollection | null;
 
+    const existing = await readCollection();
     const existingSets = Array.isArray(existing?.itemSets) ? existing!.itemSets! : [];
-    const prior =
-        existingSets.find((s) => s.title === setTitle) ||
-        existingSets.find((s) => s.title === 'Pyke Dominator' || s.title === 'Yone Mid Dominator');
-    const kept = existingSets.filter(
-        (s) => s.title !== setTitle && s.title !== 'Pyke Dominator' && s.title !== 'Yone Mid Dominator'
-    );
+    // Only our own same-titled set is replaced — other profiles' sets (and the
+    // user's own sets) stay untouched.
+    const prior = existingSets.find((s) => s.title === setTitle);
+    const kept = existingSets.filter((s) => s.title !== setTitle);
 
     const blocks: ItemSetBlock[] = [];
-    if (build.starter.length > 0) {
-        blocks.push({
-            type: 'Starting Items',
-            items: build.starter.map((item) => ({ id: String(item.id), count: 1 })),
-        });
-    }
-    if (build.core.length > 0) {
-        blocks.push({
-            type: 'Core Items',
-            items: build.core.map((item) => ({ id: String(item.id), count: 1 })),
-        });
-    }
-    if (build.boots) {
-        blocks.push({
-            type: 'Boots',
-            items: [{ id: String(build.boots.id), count: 1 }],
-        });
-    }
-    if (build.buildPath.length > 0) {
-        blocks.push({
-            type: 'Build Path',
-            items: build.buildPath.map((item) => ({ id: String(item.id), count: 1 })),
-        });
-    }
-    if (build.situational.length > 0) {
-        blocks.push({
-            type: 'Situational',
-            items: build.situational.map((item) => ({ id: String(item.id), count: 1 })),
-        });
+    const starter = sanitizeItems(build.starter);
+    const core = sanitizeItems(build.core);
+    // Full boot chain so supports can buy Boots → mid-tier → Noxian upgrade
+    const boots = sanitizeItems(expandBootChain(build.boots));
+    const path = sanitizeItems(build.buildPath);
+    const situational = sanitizeItems(build.situational);
+    // Control Ward + Oracle Lens always available in the item set
+    const vision = sanitizeItems([
+        { id: '2055' }, // Control Ward
+        { id: '3364' }, // Oracle Lens (sweeper)
+        { id: '3340' }, // Stealth Ward (trinket)
+    ]);
+
+    if (starter.length) blocks.push(block('Starting Items', starter));
+    if (core.length) blocks.push(block('Core Items', core));
+    if (boots.length) blocks.push(block('Boots (buy full chain)', boots));
+    if (vision.length) blocks.push(block('Vision — pinks + sweeper', vision));
+    if (path.length) blocks.push(block('Build Path', path));
+    if (situational.length) blocks.push(block('Situational', situational));
+
+    if (blocks.length === 0) {
+        throw new Error('Nothing to export — the build has no valid item IDs.');
     }
 
     // uid is required by LCU item-set validation — reuse prior uid on update
@@ -212,18 +369,21 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
         mode: 'any',
         priority: false,
         sortrank: 0,
-        startedFrom: 'BLANK',
-        associatedChampions: [championKey],
+        startedFrom: 'blank',
+        associatedChampions: championKey > 0 ? [championKey] : [],
         associatedMaps: [11, 12],
         preferredItemSlots: [],
         blocks,
     };
 
+    // accountId must match the account that owns the sets. Prefer whatever the
+    // collection already reports; fall back to the summoner endpoint.
     const accountId =
-        (typeof existing?.accountId === 'number' && existing.accountId > 0
+        typeof existing?.accountId === 'number' && existing.accountId > 0
             ? existing.accountId
-            : null) ??
-        (typeof currentSummoner.accountId === 'number' ? currentSummoner.accountId : 0);
+            : typeof currentSummoner.accountId === 'number'
+                ? currentSummoner.accountId
+                : 0;
 
     const payload: LCUItemSetsCollection = {
         accountId,
@@ -231,20 +391,45 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
         timestamp: Date.now(),
     };
 
+    const errors: string[] = [];
+
+    const put = async () => makeLCURequest('PUT', setsEndpoint, payload, 12000);
+
     try {
-        await makeLCURequest('PUT', `/lol-item-sets/v1/item-sets/${summonerId}/sets`, payload, 10000);
-    } catch (putErr: unknown) {
-        // Fallback: some clients accept POST to append a single page
+        await put();
+    } catch (putErr) {
+        errors.push(putErr instanceof Error ? putErr.message : String(putErr));
         try {
-            await makeLCURequest(
-                'POST',
-                `/lol-item-sets/v1/item-sets/${summonerId}/sets`,
-                newSet,
-                10000
+            // Token rotation / transient socket error — reconnect and retry once.
+            await reconnectLCU();
+            await put();
+        } catch (retryErr) {
+            errors.push(retryErr instanceof Error ? retryErr.message : String(retryErr));
+            try {
+                // Last resort: some client versions accept a single-page POST.
+                await makeLCURequest('POST', setsEndpoint, newSet, 10000);
+            } catch (postErr) {
+                errors.push(postErr instanceof Error ? postErr.message : String(postErr));
+                throw new Error(`Item set export failed: ${errors.join(' | ')}`);
+            }
+        }
+    }
+
+    // Verify the set actually persisted — the client can accept a write and then
+    // drop the page during validation.
+    try {
+        const after = await readCollection();
+        const saved = (after?.itemSets || []).some((s) => s.title === setTitle);
+        if (!saved) {
+            throw new Error(
+                `League accepted the write but "${setTitle}" is not in your item sets. Close the in-client shop/item-set editor and retry.`
             );
-        } catch {
-            const msg = putErr instanceof Error ? putErr.message : String(putErr);
-            throw new Error(`Item set export failed: ${msg}`);
+        }
+    } catch (verifyErr) {
+        // A failed verification read alone shouldn't fail the export, but a
+        // definite "not saved" result should.
+        if (verifyErr instanceof Error && verifyErr.message.includes('not in your item sets')) {
+            throw verifyErr;
         }
     }
 };
@@ -256,7 +441,7 @@ export const makeLCURequest = async (
     timeoutMs = 4000
 ) => {
     if (!credentials) {
-        throw new Error('Not connected to LCU');
+        throw new Error('Not connected to the League client');
     }
 
     const url = `${credentials.protocol}://127.0.0.1:${credentials.port}${endpoint}`;
@@ -268,7 +453,8 @@ export const makeLCURequest = async (
             url,
             headers: {
                 'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
             },
             data: body,
             httpsAgent: lcuHttpsAgent,
@@ -297,14 +483,32 @@ export const makeLCURequest = async (
 
         return response.data;
     } catch (error: unknown) {
-        const axiosError = error as { response?: { status?: number; data?: unknown }; message?: string; code?: string };
-        if (axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ETIMEDOUT') {
+        const axiosError = error as {
+            response?: { status?: number; data?: unknown };
+            message?: string;
+            code?: string;
+        };
+        if (
+            axiosError.code === 'ECONNREFUSED' ||
+            axiosError.code === 'ETIMEDOUT' ||
+            axiosError.code === 'ECONNRESET' ||
+            axiosError.code === 'EPIPE' ||
+            axiosError.code === 'ECONNABORTED'
+        ) {
             credentials = null;
-            throw new Error('League Client not reachable — is it open?');
+            throw new Error(
+                `League client not reachable (${axiosError.code}) — is it open and past the login screen?`
+            );
         }
-        if (axiosError.response?.status !== 404) {
-            console.error('LCU Request Error:', axiosError.message || 'Unknown error');
+        if (axiosError.response && axiosError.response.status !== 404) {
+            const detail =
+                typeof axiosError.response.data === 'object'
+                    ? JSON.stringify(axiosError.response.data)
+                    : String(axiosError.response.data ?? '');
+            throw new Error(
+                `LCU API ${method} ${endpoint} → ${axiosError.response.status}${detail ? `: ${detail}` : ''}`
+            );
         }
-        throw error;
+        throw error instanceof Error ? error : new Error(String(error));
     }
 };

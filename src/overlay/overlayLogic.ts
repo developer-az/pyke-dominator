@@ -3,8 +3,10 @@ import type { ProfileId } from '../logic/profiles';
 import { formatCd } from '../logic/summonerSpells';
 import { nextCannon, formatCannonEta } from '../logic/waveLogic';
 import { assessJungleThreat } from '../logic/jungleLogic';
-import { buildWardCues } from '../logic/visionLogic';
-import { trackBuildProgress, inventoryHasName } from '../logic/buildProgress';
+import { buildWardStatus, type WardStatus } from '../logic/visionLogic';
+import { trackBuildProgress, inventoryHasName, type BuildItemRef } from '../logic/buildProgress';
+import { activeThreatsByName } from '../logic/counters';
+import { inferSituation, type ProfileSituation } from '../logic/situation';
 
 export interface OverlayEnemy {
   championName: string;
@@ -76,12 +78,59 @@ export interface OverlayCue {
   label: string;
   detail: string;
   urgency: 'info' | 'warn' | 'spike';
+  /**
+   * Wall-clock seconds this cue may stay once first shown.
+   * Roam / tempo lines should be short (≤25s); fight spikes can linger longer.
+   */
+  maxAgeSec?: number;
 }
 
 export interface OverlayCueContext {
   analysis?: MatchupAnalysis | null;
   build?: Build | null;
   profileId?: ProfileId;
+  situation?: ProfileSituation | null;
+}
+
+/** Resolve the active profile for a live state (live champion wins over stored). */
+export function resolveProfileId(state: OverlayState, fallback?: ProfileId): ProfileId {
+  const live = (state.localPlayer?.championName || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (live === 'yone') return 'yone-mid';
+  if (live === 'pantheon') return 'pantheon-support';
+  if (live === 'pyke') return 'pyke-support';
+  return state.profileHint || fallback || (state.isYone ? 'yone-mid' : 'pyke-support');
+}
+
+/** Behind / even / ahead read straight off the live payload. */
+export function situationFromState(state: OverlayState): ProfileSituation {
+  return inferSituation({
+    level: state.localPlayer?.level ?? state.activePlayerLevel,
+    enemyLevels: (state.enemies || []).map((e) => e.level || 0),
+    scores: state.localPlayer?.scores,
+    enemyScores: (state.enemies || []).map((e) => e.scores || {}),
+    gameTime: state.gameTime,
+  });
+}
+
+/** Vision read for the standalone ward indicator (never in the cue stack). */
+export function getWardStatus(state: OverlayState, profileId: ProfileId): WardStatus | null {
+  const gameTime = state.gameTime ?? 0;
+  const jg = assessJungleThreat(gameTime, state.enemies || []);
+  const items = state.localPlayer?.items || [];
+  const owned = new Set(items.map((i) => i.itemID));
+  const controlWardCount = items
+    .filter((i) => i.itemID === 2055)
+    .reduce((n, i) => n + (i.count || 1), 0);
+  return buildWardStatus(gameTime, profileId, jg, state.localPlayer?.scores?.wardScore, {
+    hasUmbral: owned.has(3179),
+    hasOracle: owned.has(3364),
+    controlWardCount,
+  });
+}
+
+/** Remaining recommended items — anything already owned by item ID is dropped. */
+export function remainingBuildItems(state: OverlayState, build: Build | null | undefined): BuildItemRef[] {
+  return trackBuildProgress(state.localPlayer?.items, build).remaining;
 }
 
 /** Practical cues from Live Client + matchup analysis — levels, items, clock, mid/bot route. */
@@ -89,14 +138,17 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
   const cues: OverlayCue[] = [];
   if (!state.inGame) return cues;
 
-  const profileId = ctx.profileId || state.profileHint || (state.isYone ? 'yone-mid' : 'pyke-support');
+  const profileId = ctx.profileId || resolveProfileId(state);
   if (profileId === 'yone-mid') {
     return finalizeCues(buildYoneCues(state, ctx), state, profileId);
+  }
+  if (profileId === 'pantheon-support') {
+    return finalizeCues(buildPantheonCues(state, ctx), state, profileId);
   }
   return finalizeCues(buildPykeCues(state, ctx), state, profileId);
 }
 
-/** Merge shared jg/ward/cannon and keep top urgency cues (slightly higher budget). */
+/** Merge shared jg/threat/cannon cues and keep the highest-urgency few. */
 function finalizeCues(base: OverlayCue[], state: OverlayState, profileId: ProfileId): OverlayCue[] {
   const gameTime = state.gameTime ?? 0;
   const jg = assessJungleThreat(gameTime, state.enemies || []);
@@ -111,35 +163,171 @@ function finalizeCues(base: OverlayCue[], state: OverlayState, profileId: Profil
     });
   }
 
-  for (const w of buildWardCues(gameTime, profileId, jg).slice(0, 1)) {
+  // Named enemy threats (Naafiri) — these outrank generic clock advice once they
+  // actually have their ultimate online.
+  const threats = activeThreatsByName((state.enemies || []).map((e) => e.championName));
+  for (const threat of threats) {
+    const enemy = (state.enemies || []).find(
+      (e) => e.championName.toLowerCase().replace(/[^a-z]/g, '') === threat.id.toLowerCase()
+    );
+    if (enemy?.isDead) continue;
+    const online = (enemy?.level ?? 1) >= 6;
     shared.push({
-      id: w.id,
-      label: w.label,
-      detail: w.detail,
-      urgency: w.urgency,
+      id: `threat-${threat.id}`,
+      label: threat.cue.label,
+      detail: threat.cue.detail,
+      urgency: online ? 'spike' : 'warn',
     });
   }
 
-  // Cannon shove — only the relevant window (Pyke support priority)
-  if (profileId === 'pyke-support') {
+  // Cannon shove — short-lived roam timer only
+  if (profileId === 'pyke-support' || profileId === 'pantheon-support') {
     const cannon = nextCannon(gameTime);
-    if (cannon?.isActionWindow) {
+    if (cannon?.isActionWindow && (cannon.eta == null || cannon.eta <= 20)) {
       shared.push({
         id: 'cannon-shove',
         label: cannon.eta > 0 ? `Cannon ${formatCannonEta(cannon.eta)}` : 'Cannon wave',
-        detail:
-          cannon.eta > 5
-            ? 'Set up shove on THIS cannon — crash then leave (mid/jg). Skip non-cannon roams.'
-            : 'Crash THIS cannon → leave. Non-cannon waves are not the roam timer.',
+        detail: 'Crash → leave. Skip non-cannon roams.',
         urgency: 'spike',
+        maxAgeSec: 18,
       });
     }
   }
 
   const priority = { spike: 0, warn: 1, info: 2 } as const;
+  const seen = new Set<string>();
   return [...base, ...shared]
+    .filter((cue) => {
+      if (seen.has(cue.id)) return false;
+      seen.add(cue.id);
+      return true;
+    })
     .sort((a, b) => priority[a.urgency] - priority[b.urgency])
-    .slice(0, 3);
+    // Keep the panel tiny — only the two most important lines
+    .slice(0, 2)
+    .map((cue) => ({
+      ...cue,
+      // Default TTL: roam/tempo info dies fast; spikes get a bit longer
+      maxAgeSec:
+        cue.maxAgeSec ??
+        (cue.id.includes('roam') || cue.id.includes('cannon')
+          ? 22
+          : cue.urgency === 'info'
+            ? 18
+            : 35),
+    }));
+}
+
+function buildPantheonCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[] {
+  const cues: OverlayCue[] = [];
+  const { analysis, build } = ctx;
+  const level = state.localPlayer?.level ?? state.activePlayerLevel ?? 1;
+  const gameTime = state.gameTime ?? 0;
+  const minutes = gameTime / 60;
+  const progress = trackBuildProgress(state.localPlayer?.items, build);
+  const situation = ctx.situation || situationFromState(state);
+  const behind = situation.state === 'behind';
+  const ahead = situation.state === 'ahead';
+  const hasOracle = progress.ownedIds.has('3364');
+  const cannon = nextCannon(gameTime);
+
+  if (analysis?.preyFocus && level >= 2) {
+    cues.push({
+      id: 'prey-focus',
+      label: `Prey ${analysis.primaryTargets[0] || ''}`.trim(),
+      detail: analysis.preyFocus,
+      urgency: 'spike',
+      maxAgeSec: 40,
+    });
+  }
+
+  if (behind) {
+    cues.push({
+      id: 'pan-behind',
+      label: 'Behind — utility',
+      detail: 'E-block ADC, W diver, R only into winning fights.',
+      urgency: 'spike',
+      maxAgeSec: 35,
+    });
+  } else if (ahead && minutes >= 3 && minutes <= 10) {
+    cues.push({
+      id: 'pan-ahead',
+      label: 'Ahead — spend map',
+      detail: 'Crash → mid/jg. Your curve only goes down.',
+      urgency: 'spike',
+      maxAgeSec: 25,
+    });
+  }
+
+  if (level === 1) {
+    cues.push({
+      id: 'pan-lvl2',
+      label: 'Race to 2',
+      detail: 'Q poke → Q+W at 2 is your biggest spike.',
+      urgency: 'spike',
+      maxAgeSec: 40,
+    });
+  } else if (level === 6) {
+    cues.push({
+      id: 'pan-ult',
+      label: 'R online',
+      detail: behind
+        ? 'R only into fights you already lead.'
+        : 'R the lane that is already fighting.',
+      urgency: 'spike',
+      maxAgeSec: 28,
+    });
+  }
+
+  if (
+    !behind &&
+    minutes >= 3 &&
+    minutes <= 8 &&
+    level >= 6 &&
+    cannon?.isActionWindow &&
+    cannon.eta <= 20
+  ) {
+    cues.push({
+      id: 'roam-cannon',
+      label: 'Roam now',
+      detail: (analysis?.roamAdvice || 'Crash → leave mid/jg.').slice(0, 90),
+      urgency: 'warn',
+      maxAgeSec: 20,
+    });
+  }
+
+  if (!hasOracle && minutes >= 8.5 && minutes <= 11) {
+    cues.push({
+      id: 'swap-oracle',
+      label: 'Swap sweeper',
+      detail: 'Oracle Lens — clear before you W in.',
+      urgency: 'spike',
+      maxAgeSec: 30,
+    });
+  }
+
+  if (progress.next) {
+    cues.push({
+      id: `buy-${progress.next.id}`,
+      label: `Next: ${progress.next.name}`,
+      detail: (progress.next.reason || 'Stay on the path.').slice(0, 120),
+      urgency: behind ? 'spike' : 'warn',
+    });
+  }
+
+  const flashDown = (state.enemyBotSummoners || []).flatMap((l) =>
+    l.spells.filter((s) => s.short === 'Flash' && !s.ready && s.remaining > 0)
+  );
+  if (flashDown.length > 0 && !behind) {
+    cues.push({
+      id: 'sum-flash',
+      label: 'Flash down',
+      detail: `Enemy bot Flash ~${formatCd(flashDown[0].remaining)} — W is unavoidable in that window.`,
+      urgency: 'spike',
+    });
+  }
+
+  return cues;
 }
 
 function buildYoneCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[] {
@@ -151,7 +339,8 @@ function buildYoneCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
   const progress = trackBuildProgress(state.localPlayer?.items, build);
   const hasBerserkers =
     progress.ownedIds.has('3006') ||
-    inventoryHasName(state.localPlayer?.items, ['berserker', 'greaves']);
+    progress.ownedIds.has('3172') ||
+    inventoryHasName(state.localPlayer?.items, ['berserker', 'greaves', 'gunmetal']);
   const lowAggro = analysis?.aggressionLevel === 'LOW';
 
   // Ally jungler sync (Yone is mid — partner lane is jg, not another mid)
@@ -234,19 +423,17 @@ function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
   const { analysis, build } = ctx;
   const level = state.localPlayer?.level ?? state.activePlayerLevel ?? 1;
   const gameTime = state.gameTime ?? 0;
-  const minutes = Math.floor(gameTime / 60);
-  const seconds = Math.floor(gameTime % 60);
+  const minutes = gameTime / 60;
   const progress = trackBuildProgress(state.localPlayer?.items, build);
   const hasUmbral =
     progress.ownedIds.has('3179') || inventoryHasName(state.localPlayer?.items, ['umbral']);
-  const hasBoots = progress.hasBoots;
+  const hasOracle = progress.ownedIds.has('3364');
 
   const laneDiff = analysis?.botLaneMatchup?.matchupDifficulty;
   const hardLane = laneDiff === 'HARD' || laneDiff === 'VERY_HARD';
   const unfavorable2v2 = analysis?.botLaneMatchup?.damageComparison?.advantage === 'UNFAVORABLE';
   const lowAggro = analysis?.aggressionLevel === 'LOW';
 
-  // --- XP / level-6 timing vs roam tradeoffs ---
   const enemyBotLevels = (state.enemies || [])
     .filter((e) => {
       const p = (e.position || '').toUpperCase();
@@ -258,8 +445,18 @@ function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
       ? enemyBotLevels.reduce((a, b) => a + b, 0) / enemyBotLevels.length
       : level;
   const xpBehind = level < 6 && level + 0.4 < enemyBotAvg;
-  const xpAhead = level < 6 && level > enemyBotAvg + 0.4;
   const cannon = nextCannon(gameTime);
+
+  // Prey focus — always high value once we know who dies first
+  if (analysis?.preyFocus && level >= 2) {
+    cues.push({
+      id: 'prey-focus',
+      label: `Prey ${analysis.primaryTargets[0] || ''}`.trim(),
+      detail: analysis.preyFocus,
+      urgency: 'spike',
+      maxAgeSec: 40,
+    });
+  }
 
   if (level === 1) {
     cues.push({
@@ -269,193 +466,99 @@ function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
         ? 'Contest XP — all-in only if their key spell is down.'
         : 'Contest XP — Q+E window opens at 2.',
       urgency: 'spike',
+      maxAgeSec: 45,
     });
-  } else if (level === 2 || level === 3) {
-    if (hardLane || unfavorable2v2) {
-      cues.push({
-        id: 'early-window',
-        label: `L${level} windows`,
-        detail: 'Thin trades on spent CDs. Crash → leave for mid/jg — skip extended 2v2.',
-        urgency: 'warn',
-      });
-    } else {
-      cues.push({
-        id: 'early-allin',
-        label: `Level ${level} all-in`,
-        detail: 'Bush Q → E. Trade with grey health up.',
-        urgency: 'spike',
-      });
-    }
-  } else if (level >= 4 && level < 6) {
-    if (xpBehind) {
-      cues.push({
-        id: 'xp-hold',
-        label: 'Hold for XP',
-        detail:
-          'Behind on XP before 6 — soak cannon/XP, skip long mid roams. Jg sync only on crash + shown path.',
-        urgency: 'spike',
-      });
-    } else if (xpAhead && cannon?.isActionWindow) {
-      cues.push({
-        id: 'xp-convert',
-        label: 'XP lead — convert',
-        detail: 'Ahead pre-6: crash THIS cannon → mid/jg sync, then return for your 6.',
-        urgency: 'warn',
-      });
-    } else {
-      cues.push({
-        id: 'ult-soon',
-        label: 'Ult next level',
-        detail: 'Perfect XP for 6 — R execute snowball. Roam only after cannon crash.',
-        urgency: 'warn',
-      });
-    }
-  } else if (level >= 6 && level < 8) {
+  } else if ((level === 2 || level === 3) && (hardLane || unfavorable2v2 || !analysis?.preyFocus)) {
+    cues.push({
+      id: 'early-window',
+      label: `L${level}`,
+      detail: hardLane || unfavorable2v2
+        ? 'Thin trades on spent CDs. Crash → leave — skip extended 2v2.'
+        : 'Bush Q → E. Trade with grey health up.',
+      urgency: hardLane ? 'warn' : 'spike',
+      maxAgeSec: 30,
+    });
+  } else if (level >= 4 && level < 6 && xpBehind) {
+    cues.push({
+      id: 'xp-hold',
+      label: 'Hold for XP',
+      detail: 'Soak cannon/XP — skip long mid roams until 6.',
+      urgency: 'spike',
+      maxAgeSec: 25,
+    });
+  } else if (level === 6) {
+    // Only the moment you hit 6 — not a sticky banner for two levels
     cues.push({
       id: 'ult-online',
       label: 'R online',
-      detail: analysis?.roamAdvice
-        ? analysis.roamAdvice.slice(0, 120)
-        : 'Crash bot → convert mid/jungle. R resets decide skirmishes.',
+      detail: 'Crash → convert. R finishes fights.',
       urgency: 'spike',
+      maxAgeSec: 28,
     });
-  } else if (level >= 11 && level < 13) {
+  }
+
+  // Roam: only during the live cannon action window, short TTL
+  if (
+    minutes >= 3 &&
+    minutes <= 8 &&
+    level >= 6 &&
+    cannon?.isActionWindow &&
+    (cannon.eta == null || cannon.eta <= 25)
+  ) {
+    const roamDetail = analysis?.roamAdvice
+      ? analysis.roamAdvice.slice(0, 100)
+      : hardLane || lowAggro
+        ? 'Crash → leave. Mid only on spent dashes.'
+        : 'Crash → W river / mid.';
     cues.push({
-      id: 'mid-levels',
-      label: 'Mid-game spike',
-      detail: 'Lower R CD — chain flanks with ADC for resets.',
-      urgency: 'spike',
-    });
-  } else if (level >= 16) {
-    cues.push({
-      id: 'late-levels',
-      label: 'Late-game R',
-      detail: 'Hold for multi-kill angles. R finishes fights — it does not open them.',
+      id: 'roam-cannon',
+      label: 'Roam now',
+      detail: roamDetail,
       urgency: 'warn',
+      maxAgeSec: 20,
     });
   }
 
-  if (gameTime > 0) {
-    if (minutes >= 2 && minutes < 3 && !hasBoots) {
-      cues.push({
-        id: 'first-back',
-        label: 'First back window',
-        detail: `~${minutes}:${seconds.toString().padStart(2, '0')} — bank gold for upgrade / boots.`,
-        urgency: 'info',
-      });
-    }
-    // Roam timing only on cannon windows (or post-6 when R is the convert tool)
-    if (minutes >= 3 && minutes <= 6 && level >= 6 && cannon?.isActionWindow) {
-      const roamDetail = analysis?.roamAdvice
-        ? analysis.roamAdvice.slice(0, 140)
-        : hardLane || lowAggro
-          ? 'Cannon crash → leave. Prefer mid only on spent dashes / ally setup; else jg/river.'
-          : 'Cannon crash → W mid river. Track enemy jungler path.';
-      cues.push({
-        id: 'first-roam',
-        label: 'Roam on cannon',
-        detail: roamDetail,
-        urgency: 'warn',
-      });
-    }
-    if (minutes >= 7 && minutes <= 9) {
-      cues.push({
-        id: 'herald-setup',
-        label: 'Herald / river',
-        detail: 'Deep vision + pick before objective spawn.',
-        urgency: 'info',
-      });
-    }
-    if (minutes >= 13 && minutes <= 15) {
-      cues.push({
-        id: 'dragon-setup',
-        label: 'Dragon setup',
-        detail: 'Clear vision early. Hold R for cross-map execute.',
-        urgency: 'warn',
-      });
-    }
-    if (minutes >= 16 && minutes <= 20) {
-      cues.push({
-        id: 'soul-baron-setup',
-        label: 'Soul / Baron window',
-        detail: 'Umbral clear → side fog picks. Save R for collapsing fights.',
-        urgency: 'warn',
-      });
-    }
-    if (minutes > 20 && minutes <= 30) {
-      cues.push({
-        id: 'mid-late-flank',
-        label: 'Mid-late flanks',
-        detail: 'Play fog edges. Peel ADC first, then look for R resets.',
-        urgency: 'spike',
-      });
-    }
-    if (minutes > 30) {
-      cues.push({
-        id: 'super-late',
-        label: 'Super late',
-        detail: 'One mistake ends it — ward, wait, punish overextends only.',
-        urgency: 'warn',
-      });
-    }
+  // Vision shop beats filler clock advice
+  if (!hasOracle && minutes >= 8.5 && minutes <= 11) {
+    cues.push({
+      id: 'swap-oracle',
+      label: 'Swap sweeper',
+      detail: 'Oracle Lens now — clear before the next fight.',
+      urgency: 'spike',
+      maxAgeSec: 30,
+    });
   }
 
-  // Item path by ID — advances past first purchase correctly
-  if (progress.next) {
+  // Boot upgrade / next buy — only when it is the blocking step
+  if (progress.next && !progress.hasFinishedBoots && /boot|swift|lucid|crush|armor|march|greave/i.test(progress.next.name)) {
+    cues.push({
+      id: `buy-${progress.next.id}`,
+      label: `Buy ${progress.next.name}`,
+      detail: (progress.next.reason || 'Finish the boot upgrade chain.').slice(0, 100),
+      urgency: 'spike',
+      maxAgeSec: 40,
+    });
+  } else if (progress.next && !hasUmbral) {
     cues.push({
       id: `buy-${progress.next.id}`,
       label: `Next: ${progress.next.name}`,
-      detail: (progress.next.reason || (hasUmbral ? 'Stay on spike path.' : 'Vision denial unlocks the fights you choose.')).slice(
-        0,
-        120
-      ),
-      urgency: 'spike',
-    });
-  } else if (!hasUmbral && level >= 4) {
-    cues.push({
-      id: 'rush-umbral',
-      label: 'Rush Umbral',
-      detail: 'Vision denial unlocks the fights you choose.',
-      urgency: 'info',
+      detail: (progress.next.reason || 'Stay on spike path.').slice(0, 100),
+      urgency: 'warn',
+      maxAgeSec: 35,
     });
   }
 
-  if (hasBoots && minutes >= 5 && minutes <= 12) {
-    cues.push({
-      id: 'mobility',
-      label: 'Boots active',
-      detail: hardLane || lowAggro
-        ? 'Boots = leave timers. Convert cannon crashes cross-map.'
-        : 'Maximize side presence between cannon waves.',
-      urgency: 'info',
-    });
-  }
-  if (progress.completedCount >= 3 && minutes >= 18) {
-    cues.push({
-      id: 'full-build-pressure',
-      label: 'Item spike',
-      detail: 'Fog picks before objectives — your burst window is now.',
-      urgency: 'spike',
-    });
-  }
-
-  // Free R angles ONLY with ult (level 6+)
   const flashDown = (state.enemyBotSummoners || []).flatMap((l) =>
     l.spells.filter((s) => s.short === 'Flash' && !s.ready && s.remaining > 0)
   );
-  if (level >= 6 && flashDown.length > 0) {
+  if (level >= 6 && flashDown.length > 0 && flashDown[0].remaining < 90) {
     cues.push({
       id: 'sum-flash',
       label: 'Flash down',
-      detail: `Enemy ${flashDown.length > 1 ? 'bot' : 'Flash'} ~${formatCd(flashDown[0].remaining)} — free R angles.`,
+      detail: `~${formatCd(flashDown[0].remaining)} — free R angles.`,
       urgency: 'spike',
-    });
-  } else if (level < 6 && flashDown.length > 0) {
-    cues.push({
-      id: 'sum-flash-pre6',
-      label: 'Flash down',
-      detail: `Flash ~${formatCd(flashDown[0].remaining)} — trade/zone only. No R until 6.`,
-      urgency: 'info',
+      maxAgeSec: 25,
     });
   }
 

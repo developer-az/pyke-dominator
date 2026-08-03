@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Build, RunePage, Item, MatchupAnalysis } from '../logic/pykeLogic';
-import { getRuneIconUrl } from '../data/runeService';
+import { getRuneIconUrl, getRuneMeta, getStyleMeta } from '../data/runeService';
 import { HudFrame } from './HudFrame';
 import { ChromeMark } from '../overlay/ChromeMark';
 
@@ -10,7 +10,11 @@ interface Props {
     analysis: MatchupAnalysis;
     onExport: () => void;
     canExport: boolean;
-    exportStatus: 'idle' | 'success' | 'error';
+    exportStatus: 'idle' | 'working' | 'success' | 'error';
+    /** Message from a failed export — shown verbatim so the cause is actionable. */
+    exportError?: string | null;
+    /** Extra context on success / partial success. */
+    exportDetail?: string | null;
     accentColor?: string;
 }
 
@@ -31,33 +35,52 @@ const ItemIcon: React.FC<{ item: Item; size?: string }> = ({ item, size = "w-12 
     </div>
 );
 
-const RuneIcon: React.FC<{ id: number; name: string; iconPath: string; reason?: string }> = ({ id, name, iconPath, reason }) => {
-    const runeIconUrl = getRuneIconUrl(id);
-    
+const RuneIcon: React.FC<{ id: number; reason?: string; size?: string }> = ({ id, reason, size = 'w-8 h-8' }) => {
+    const meta = getRuneMeta(id);
+
     return (
         <div className="group relative">
             <img
-                src={runeIconUrl}
-                alt={name}
-                className="w-8 h-8 border border-chrome-dim/40 group-hover:border-chrome-silver transition-colors cursor-help"
+                src={meta.icon}
+                alt={meta.name}
+                className={`${size} border border-chrome-dim/40 group-hover:border-chrome-silver transition-colors cursor-help`}
                 onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (target.src !== iconPath) {
-                        target.src = iconPath;
-                    } else {
-                        target.src = 'https://ddragon.leagueoflegends.com/cdn/15.1.1/img/perk/5001.png';
+                    const fallback = getRuneIconUrl(id);
+                    if (target.src !== fallback) {
+                        target.src = fallback;
                     }
                 }}
             />
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-chrome-ink/95 border border-chrome-silver/40 text-chrome-silver text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity shadow-lg">
-                <div className="font-bold text-chrome-bright mb-1">{name}</div>
-                <div>{reason || "Standard Pyke rune."}</div>
+                <div className="font-bold text-chrome-bright mb-1">{meta.name}</div>
+                <div>{reason || 'Selected for this matchup.'}</div>
             </div>
         </div>
     );
 };
 
-export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport, canExport, exportStatus, accentColor }) => {
+export const BuildDisplay: React.FC<Props> = ({
+    build,
+    runes,
+    analysis,
+    onExport,
+    canExport,
+    exportStatus,
+    exportError,
+    exportDetail,
+    accentColor,
+}) => {
+    // Pages are always [keystone, 3 primary minors, 2 secondary, 3 shards]
+    const perks = runes.selectedPerkIds;
+    const keystoneId = perks[0];
+    const keystone = getRuneMeta(keystoneId);
+    const primaryMinorIds = perks.slice(1, 4);
+    const secondaryIds = perks.slice(4, 6);
+    const shardIds = perks.slice(6, 9);
+    const primaryStyle = getStyleMeta(runes.primaryStyleId);
+    const secondaryStyle = getStyleMeta(runes.subStyleId);
+
     return (
         <div className="space-y-8 animate-fade-in relative" style={{ zIndex: 1, position: 'relative', ['--build-accent' as string]: accentColor || 'var(--chrome-silver)' }}>
             {/* Header */}
@@ -69,7 +92,7 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                 {canExport && (
                     <button
                         onClick={onExport}
-                        disabled={exportStatus !== 'idle'}
+                        disabled={exportStatus === 'working'}
                         className={`px-5 py-2.5 border-2 transition-all duration-200 uppercase font-bold text-sm tracking-wider shadow-lg clip-path-none ${
                             exportStatus === 'success' 
                                 ? 'bg-emerald-600 text-white border-emerald-500' 
@@ -80,15 +103,32 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                         style={{ clipPath: 'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)' }}
                     >
                         {exportStatus === 'success' ? '✓ Exported!' :
-                            exportStatus === 'error' ? '✕ Failed' :
-                                '→ Export Build'}
+                            exportStatus === 'working' ? '… Exporting' :
+                                exportStatus === 'error' ? '✕ Retry Export' :
+                                    '→ Export Build'}
                     </button>
                 )}
             </div>
             {canExport && (
-                <p className="text-xs text-chrome-dim -mt-6">
-                    Exports runes and item set. Item set appears in-game shop.
-                </p>
+                <div className="-mt-6 space-y-1">
+                    <p className="text-xs text-chrome-dim">
+                        Exports runes and item set. Item set appears in-game shop.
+                    </p>
+                    {exportStatus === 'error' && exportError && (
+                        <div className="text-xs text-rose-300 border border-chrome-blood/50 bg-chrome-blood/10 px-3 py-2">
+                            <div className="font-bold uppercase tracking-wider mb-1">Export failed</div>
+                            <div className="font-mono break-words">{exportError}</div>
+                            {exportDetail && <div className="mt-1 opacity-80">{exportDetail}</div>}
+                            <div className="mt-1 opacity-70">
+                                Make sure the League client is open and fully logged in (not on the login screen),
+                                then press Retry Export.
+                            </div>
+                        </div>
+                    )}
+                    {exportStatus === 'success' && exportDetail && (
+                        <p className="text-xs text-emerald-300">{exportDetail}</p>
+                    )}
+                </div>
             )}
 
             {/* STRATEGIC ANALYSIS SECTION */}
@@ -347,72 +387,50 @@ export const BuildDisplay: React.FC<Props> = ({ build, runes, analysis, onExport
                         <div className="flex justify-between items-center mb-4">
                             <div className="flex items-center gap-2">
                                 <img
-                                    src="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/7200_Domination.png"
-                                    alt="Domination"
+                                    src={primaryStyle.icon}
+                                    alt={primaryStyle.name}
                                     className="w-8 h-8"
                                 />
-                                <span className="text-pyke-green font-bold text-lg">Hail of Blades</span>
+                                <span className="text-pyke-green font-bold text-lg">{keystone.name}</span>
                             </div>
-                            <span className="text-xs text-slate-400">Domination</span>
+                            <span className="text-xs text-slate-400">{primaryStyle.name}</span>
                         </div>
 
                         <div className="space-y-3">
                             {/* Keystone */}
                             <div className="flex items-center gap-3">
-                                <RuneIcon
-                                    id={9923}
-                                    name="Hail of Blades"
-                                    iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/HailOfBlades/HailOfBlades.png"
-                                    reason={runes.reasons[9923]}
-                                />
-                                <span className="text-white font-bold">Hail of Blades</span>
+                                <RuneIcon id={keystoneId} reason={runes.reasons[keystoneId]} size="w-10 h-10" />
+                                <span className="text-white font-bold">{keystone.name}</span>
                             </div>
 
-                            {/* Primary Runes */}
+                            {/* Primary tree minor runes */}
                             <div className="flex gap-4 pl-2">
-                                <RuneIcon id={8143} name="Sudden Impact" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SuddenImpact/SuddenImpact.png" reason={runes.reasons[8143]} />
-
-                                {/* Dynamic Vision Rune (Slot 3) - Updated for Season 15 */}
-                                {runes.selectedPerkIds.includes(8137) ? (
-                                    <RuneIcon id={8137} name="Sixth Sense" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SixthSense/SixthSense.png" reason={runes.reasons[8137]} />
-                                ) : runes.selectedPerkIds.includes(8141) ? (
-                                    <RuneIcon id={8141} name="Deep Ward" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/DeepWard/DeepWard.png" reason={runes.reasons[8141]} />
-                                ) : runes.selectedPerkIds.includes(8140) ? (
-                                    <RuneIcon id={8140} name="Grisly Mementos" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/GrislyMementos/GrislyMementos.png" reason={runes.reasons[8140]} />
-                                ) : (
-                                    <RuneIcon id={8137} name="Sixth Sense" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SixthSense/SixthSense.png" reason={runes.reasons[8137]} />
-                                )}
-
-                                <RuneIcon id={8106} name="Ultimate Hunter" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/UltimateHunter/UltimateHunter.png" reason={runes.reasons[8106]} />
+                                {primaryMinorIds.map((id) => (
+                                    <RuneIcon key={id} id={id} reason={runes.reasons[id]} />
+                                ))}
                             </div>
                         </div>
 
                         <div className="mt-4 pt-4 border-t border-slate-700">
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-xs text-slate-400">Secondary Tree</span>
-                                {runes.subStyleId === 8400 ? (
-                                    <img src="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/7204_Resolve.png" className="w-5 h-5" />
-                                ) : (
-                                    <img src="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/7201_Precision.png" className="w-5 h-5" />
-                                )}
+                                <img src={secondaryStyle.icon} alt={secondaryStyle.name} className="w-5 h-5" />
+                                <span className="text-xs text-slate-500">{secondaryStyle.name}</span>
                             </div>
 
                             <div className="flex gap-4 pl-2">
-                                {runes.subStyleId === 8400 ? (
-                                    <>
-                                        <RuneIcon id={8444} name="Second Wind" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/SecondWind/SecondWind.png" reason={runes.reasons[8444]} />
-                                        <RuneIcon id={8242} name="Unflinching" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Unflinching/Unflinching.png" reason={runes.reasons[8242]} />
-                                    </>
-                                ) : (
-                                    <>
-                                        {runes.selectedPerkIds.includes(8009) ? (
-                                            <RuneIcon id={8009} name="Presence of Mind" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/PresenceOfMind/PresenceOfMind.png" reason={runes.reasons[8009]} />
-                                        ) : (
-                                            <RuneIcon id={9111} name="Triumph" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/Triumph.png" reason={runes.reasons[9111]} />
-                                        )}
-                                        <RuneIcon id={8014} name="Coup de Grace" iconPath="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/CoupDeGrace/CoupDeGrace.png" reason={runes.reasons[8014]} />
-                                    </>
-                                )}
+                                {secondaryIds.map((id) => (
+                                    <RuneIcon key={id} id={id} reason={runes.reasons[id]} />
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-700">
+                            <div className="text-xs text-slate-400 mb-2">Stat Shards</div>
+                            <div className="flex gap-4 pl-2">
+                                {shardIds.map((id, i) => (
+                                    <RuneIcon key={`${id}-${i}`} id={id} reason={runes.reasons[id]} size="w-6 h-6" />
+                                ))}
                             </div>
                         </div>
                     </div>

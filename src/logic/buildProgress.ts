@@ -2,6 +2,13 @@
  * Track recommended-build purchase progress by item ID (not fuzzy names).
  */
 
+import {
+  ALL_BOOT_IDS,
+  finalizeBootId,
+  nextBootStep,
+  ownsFinishedBoots,
+} from './bootChains';
+
 export interface BuildItemRef {
   id: string;
   name: string;
@@ -10,27 +17,28 @@ export interface BuildItemRef {
 
 export interface BuildProgress {
   ownedIds: Set<string>;
-  /** Ordered path: starter skipped; boots + core + first situational */
+  /** Ordered path: boots chain step + core + situational */
   path: BuildItemRef[];
+  remaining: BuildItemRef[];
   next: BuildItemRef | null;
   completedCount: number;
-  /** Component / finished boots detected */
+  /** Any boots piece in inventory */
   hasBoots: boolean;
+  /** Finished Noxian / upgraded boot for the recommendation */
+  hasFinishedBoots: boolean;
 }
 
-const BOOT_IDS = new Set([
-  '1001', // Boots
-  '3006', // Berserker's
-  '3009', // Swiftness
-  '3020', // Sorc
-  '3047', // Steelcaps
-  '3111', // Mercs
-  '3117', // Mobility
-  '3158', // Lucidity
+/** Support quest chain — owning any stage counts as "have Atlas". */
+export const SUPPORT_QUEST_IDS = new Set([
+  '3865', // World Atlas
+  '3866', // Runic Compass
+  '3867', // Bounty of Worlds
+  '3869', // Celestial Opposition
+  '3870', // Dream Maker
+  '3871', // Zaz'Zak's
+  '3876', // Solstice Sleigh
+  '3877', // Bloodsong
 ]);
-
-/** Finished items that imply boots already purchased. */
-const BOOT_FINISHED = BOOT_IDS;
 
 export function trackBuildProgress(
   inventory: Array<{ itemID: number; displayName?: string; count?: number }> | undefined,
@@ -46,36 +54,66 @@ export function trackBuildProgress(
       .map((i) => String(i.itemID))
   );
 
-  const hasBoots = [...ownedIds].some((id) => BOOT_FINISHED.has(id));
+  const hasBoots = [...ownedIds].some((id) => ALL_BOOT_IDS.has(id));
+  const bootTarget = build?.boots ? finalizeBootId(build.boots.id) : '';
+  const hasFinishedBoots = bootTarget ? ownsFinishedBoots(ownedIds, bootTarget) : false;
 
   if (!build) {
-    return { ownedIds, path: [], next: null, completedCount: 0, hasBoots };
+    return {
+      ownedIds,
+      path: [],
+      remaining: [],
+      next: null,
+      completedCount: 0,
+      hasBoots,
+      hasFinishedBoots,
+    };
   }
 
   const path: BuildItemRef[] = [];
-  // Boots first after open, then core in order, then situational
-  if (build.boots) path.push(build.boots);
-  for (const c of build.core) path.push(c);
-  for (const s of build.situational.slice(0, 3)) {
+  // Surface the next boot step (Boots → mid → upgrade) so supports see the upgrade
+  const bootStep = nextBootStep(ownedIds, build.boots.id);
+  if (bootStep && !hasFinishedBoots) {
+    path.push({
+      id: bootStep.id,
+      name: bootStep.name,
+      reason:
+        bootStep.id === bootTarget
+          ? build.boots.reason || 'Finish boot upgrade.'
+          : `Boot path → ${build.boots.name}: buy ${bootStep.name} next.`,
+    });
+  } else if (build.boots && !hasFinishedBoots) {
+    path.push({ ...build.boots, id: bootTarget || build.boots.id });
+  }
+
+  for (const c of build.core) {
+    if (!path.some((p) => p.id === c.id)) path.push(c);
+  }
+  for (const s of build.situational) {
     if (!path.some((p) => p.id === s.id)) path.push(s);
   }
 
+  const hasSupportQuest = [...ownedIds].some((id) => SUPPORT_QUEST_IDS.has(id));
+
   let completedCount = 0;
   let next: BuildItemRef | null = null;
+  const remaining: BuildItemRef[] = [];
   for (const item of path) {
-    if (ownedIds.has(String(item.id))) {
+    const isBootStep = ALL_BOOT_IDS.has(item.id) || item.id === build.boots?.id;
+    const owned =
+      ownedIds.has(String(item.id)) ||
+      (isBootStep && hasFinishedBoots) ||
+      (item.id === '3865' && hasSupportQuest) ||
+      (item.id === '3877' && ownedIds.has('3877'));
+    if (owned) {
       completedCount++;
       continue;
     }
-    // Boots: any finished boots satisfies the boots step
-    if (item.id === build.boots?.id && hasBoots) {
-      completedCount++;
-      continue;
-    }
+    remaining.push(item);
     if (!next) next = item;
   }
 
-  return { ownedIds, path, next, completedCount, hasBoots };
+  return { ownedIds, path, remaining, next, completedCount, hasBoots, hasFinishedBoots };
 }
 
 /** Name fallback for items that finished but ID drifted (rare). */

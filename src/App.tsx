@@ -8,6 +8,7 @@ import type { Champion, Build, RunePage, MatchupAnalysis, DominanceMetrics } fro
 import {
   PROFILES,
   getProfile,
+  isProfileId,
   loadStoredProfileId,
   storeProfileId,
   profileFromChampionName,
@@ -37,7 +38,9 @@ const App: React.FC = () => {
   const [analysis, setAnalysis] = useState<MatchupAnalysis | null>(null);
   const [dominance, setDominance] = useState<DominanceMetrics | null>(null);
   const [lcuConnected, setLcuConnected] = useState(false);
-  const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [exportStatus, setExportStatus] = useState<'idle' | 'working' | 'success' | 'error'>('idle');
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDetail, setExportDetail] = useState<string | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [overlayInGame, setOverlayInGame] = useState(false);
   const wasInGameRef = React.useRef(false);
@@ -98,24 +101,31 @@ const App: React.FC = () => {
     if (!window.electronAPI) return;
 
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setInterval> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
 
+    // Each attempt spawns a PowerShell process to read the client's command line,
+    // so back off instead of hammering it every 5s while League is closed.
     const tryConnect = () => {
       if (!window.electronAPI || cancelled) return;
       window.electronAPI.connectLCU().then(res => {
         if (cancelled) return;
         if (res && res.success) {
           setLcuConnected(true);
-          if (retryTimer) {
-            clearInterval(retryTimer);
-            retryTimer = null;
-          }
+          return;
         }
-      }).catch(() => { /* keep retrying */ });
+        scheduleRetry();
+      }).catch(() => scheduleRetry());
+    };
+
+    const scheduleRetry = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const delay = Math.min(30000, 5000 * Math.min(attempts, 6));
+      retryTimer = setTimeout(tryConnect, delay);
     };
 
     tryConnect();
-    retryTimer = setInterval(tryConnect, 5000);
 
     window.electronAPI.getOverlayStatus?.().then((res) => {
       if (res?.success) {
@@ -141,7 +151,7 @@ const App: React.FC = () => {
 
     return () => {
       cancelled = true;
-      if (retryTimer) clearInterval(retryTimer);
+      if (retryTimer) clearTimeout(retryTimer);
       unsubVis?.();
       unsubMeta?.();
     };
@@ -161,11 +171,12 @@ const App: React.FC = () => {
         setEnemyBotSummoners(data.enemyBotSummoners);
       }
       // Auto-switch profile when live client reports local champion
-      if (data.profileHint === 'yone-mid' || data.profileHint === 'pyke-support') {
+      if (isProfileId(data.profileHint)) {
+        const hint = data.profileHint;
         setProfileId((prev) => {
-          if (prev !== data.profileHint) {
-            storeProfileId(data.profileHint!);
-            return data.profileHint!;
+          if (prev !== hint) {
+            storeProfileId(hint);
+            return hint;
           }
           return prev;
         });
@@ -203,14 +214,14 @@ const App: React.FC = () => {
 
   // Auto-Detect Logic (Polling)
   useEffect(() => {
-    if (!lcuConnected || !window.electronAPI || champions.length === 0) return;
+    // While a match is live the main window is minimized and champ select is
+    // irrelevant — do not even schedule the timer, so League keeps the CPU.
+    if (!lcuConnected || !window.electronAPI || champions.length === 0 || overlayInGame) return;
 
     let pollInFlight = false;
 
     const poll = async () => {
-      // Performance: skip while hidden OR while a match is live (main is minimized /
-      // champ select is irrelevant — avoid competing with League for LCU + CPU).
-      if (document.hidden || overlayInGame) return;
+      if (document.hidden) return;
       // Avoid stacking overlapping requests if one poll runs long
       if (pollInFlight) return;
 
@@ -394,8 +405,8 @@ const App: React.FC = () => {
 
     // Listener to handle visibility changes immediately
     const handleVisibilityChange = () => {
-      if (!document.hidden && !overlayInGame) {
-        poll(); // Poll immediately when becoming visible
+      if (!document.hidden) {
+        void poll(); // Poll immediately when becoming visible
       }
     };
 
@@ -470,11 +481,13 @@ const App: React.FC = () => {
   const handleExport = async () => {
     if (!runes || !window.electronAPI) return;
     try {
-      setExportStatus('idle');
+      setExportStatus('working');
+      setExportError(null);
+      setExportDetail(null);
 
       const selectedPerkIds = [...runes.selectedPerkIds];
       if (selectedPerkIds.length !== 9) {
-        throw new Error(`Invalid rune configuration: Expected 9 runes, got ${selectedPerkIds.length}`);
+        throw new Error(`Invalid rune configuration: expected 9 runes, got ${selectedPerkIds.length}`);
       }
 
       const runePagePayload = {
@@ -486,11 +499,9 @@ const App: React.FC = () => {
       };
 
       // Prefer dedicated main-process exporters (correct LCU paths + error bodies)
-      let runeOk = false;
       if (window.electronAPI.exportRunePage) {
         const runeRes = await window.electronAPI.exportRunePage(runePagePayload);
         if (!runeRes.success) throw new Error(runeRes.error || 'Failed to export rune page');
-        runeOk = true;
       } else {
         const res = await window.electronAPI.requestLCU('GET', '/lol-perks/v1/pages');
         if (!res.success) throw new Error(res.error);
@@ -502,10 +513,8 @@ const App: React.FC = () => {
         }
         const createRes = await window.electronAPI.requestLCU('POST', '/lol-perks/v1/pages', runePagePayload);
         if (!createRes.success) throw new Error(createRes.error || 'Failed to create rune page');
-        runeOk = true;
       }
 
-      let itemOk = true;
       if (build && window.electronAPI.exportItemSet) {
         const itemRes = await window.electronAPI.exportItemSet({
           starter: build.starter,
@@ -517,22 +526,21 @@ const App: React.FC = () => {
           title: profile.itemSetTitle,
         });
         if (!itemRes?.success) {
-          itemOk = false;
-          console.error('Item set export failed:', itemRes?.error);
           // Runes landed — surface partial failure instead of silent success
-          throw new Error(itemRes?.error || 'Rune page exported, but item set failed');
+          setExportDetail('Runes exported. Item set failed.');
+          throw new Error(itemRes?.error || 'Item set export failed');
         }
       }
 
-      if (runeOk && itemOk) {
-        setExportStatus('success');
-        setTimeout(() => setExportStatus('idle'), 3000);
-      }
+      setExportStatus('success');
+      setExportDetail(`${profile.runePageName} + item set sent to the client.`);
+      setTimeout(() => setExportStatus('idle'), 4000);
     } catch (error: unknown) {
       const err = error as { message?: string };
-      console.error('Export failed:', err.message || error);
+      const message = err.message || 'Unknown export error';
+      console.error('Export failed:', message);
+      setExportError(message);
       setExportStatus('error');
-      setTimeout(() => setExportStatus('idle'), 4000);
     }
   };
 
@@ -867,7 +875,9 @@ const App: React.FC = () => {
               <p className="text-[9px] font-mono text-chrome-dim/70 mb-3 tracking-wide">
                 {profile.id === 'yone-mid'
                   ? 'You are mid — matchup math uses your jungler, not another mid.'
-                  : 'ADC + mid for roam / 2v2 scoring.'}
+                  : profile.id === 'pantheon-support'
+                    ? 'ADC first — you play through them. Mid decides whether a roam is free.'
+                    : 'ADC + mid for roam / 2v2 scoring.'}
               </p>
               <ChampionSelect
                 champions={champions}
@@ -889,6 +899,8 @@ const App: React.FC = () => {
                 onExport={handleExport}
                 canExport={lcuConnected}
                 exportStatus={exportStatus}
+                exportError={exportError}
+                exportDetail={exportDetail}
                 accentColor={chromeColor}
               />
             ) : (

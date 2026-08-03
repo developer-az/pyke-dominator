@@ -1,3 +1,7 @@
+import { activeThreats, applyThreatScoring, threatTips } from './counters';
+import { evaluateCrossMap } from './crossMap';
+import { buildPreyFocus } from './preyFocus';
+
 export interface Champion {
     id: string;
     key: string; // Numeric ID
@@ -40,13 +44,19 @@ export interface RunePage {
 
 // Static Data for Items
 const ITEMS = {
-    WORLD_ATLAS: { id: '3867', name: 'World Atlas', icon: 'World_Atlas', reason: 'Support starter — gold + wards on curve.' },
+    // 3865 = World Atlas (purchasable starter). 3867 = Bounty of Worlds (quest mid-step, NOT buyable).
+    WORLD_ATLAS: { id: '3865', name: 'World Atlas', icon: 'World_Atlas', reason: 'Support starter — gold + wards on curve.' },
+    BLOODSONG: { id: '3877', name: 'Bloodsong', icon: 'Bloodsong', reason: 'Atlas finish — AD + execute amp for R snowball (Pyke quest path).' },
     POTION: { id: '2003', name: 'Health Potion', icon: 'Health_Potion', reason: 'Lane HP buffer for early trades.' },
+    CONTROL_WARD: { id: '2055', name: 'Control Ward', icon: 'Control_Ward', reason: 'Buy every back — hold 1–2. Pit pink before objectives.' },
+    ORACLE_LENS: { id: '3364', name: 'Oracle Lens', icon: 'Oracle_Lens', reason: 'Sweeper — swap ~9 min or with Umbral; clear before fights.' },
 
-    MOBILITY_BOOTS: { id: '3117', name: 'Boots of Mobility', icon: 'Boots_of_Mobility', reason: 'Cross-map tempo — convert crashes into mid/jg fights.' },
-    MERCURY_TREADS: { id: '3111', name: 'Mercury\'s Treads', icon: 'Mercury_s_Treads', reason: 'Tenacity so CC chains cannot delete your engage window.' },
-    PLATED_STEELCAPS: { id: '3047', name: 'Plated Steelcaps', icon: 'Plated_Steelcaps', reason: 'Cut AA DPS from marksmen / fighters in extended fights.' },
-    IONIAN_BOOTS: { id: '3158', name: 'Ionian Boots of Lucidity', icon: 'Ionian_Boots_of_Lucidity', reason: 'Ability haste — more Q/E/R cycles per fight.' },
+    // Mobility Boots (3117) removed — recommend finished Noxian upgrades (shop: Boots → mid → upgrade).
+    SWIFTMARCH: { id: '3170', name: 'Swiftmarch', icon: 'Swiftmarch', reason: 'Finish: Boots → Swiftness → Swiftmarch. Roam MS path.' },
+    BOOTS_OF_SWIFTNESS: { id: '3009', name: 'Boots of Swiftness', icon: 'Boots_of_Swiftness', reason: 'Mid-tier into Swiftmarch — buy this before the upgrade.' },
+    MERCURY_TREADS: { id: '3173', name: 'Chainlaced Crushers', icon: 'Chainlaced_Crushers', reason: 'Finish: Boots → Mercs → Crushers. Tenacity upgrade.' },
+    PLATED_STEELCAPS: { id: '3174', name: 'Armored Advance', icon: 'Armored_Advance', reason: 'Finish: Boots → Steelcaps → Armored Advance.' },
+    IONIAN_BOOTS: { id: '3171', name: 'Crimson Lucidity', icon: 'Crimson_Lucidity', reason: 'Finish: Boots → Ionian → Crimson Lucidity. Haste upgrade.' },
 
     VOLTAIC_CYCLOSWORD: { id: '6699', name: 'Voltaic Cyclosword', icon: 'Voltaic_Cyclosword', reason: 'Energized burst + slow — fight-deciding lethality spike.' },
     YOUMUUS_GHOSTBLADE: { id: '3142', name: 'Youmuu\'s Ghostblade', icon: 'Youmuu_s_Ghostblade', reason: 'MS active for roam entries and cleanup angles.' },
@@ -263,6 +273,7 @@ export const calculateBuild = (
     // Lightweight bot read for lane-aware scoring (no circular dep — analyzeBotLaneMatchup is below)
     const botLane = analyzeBotLaneMatchup(enemyTeam, yourADC || null);
     const ctx = scanCompContext(enemyTeam, yourADC, allyMid, botLane);
+    const threats = activeThreats(enemyTeam);
 
     const build: Build = {
         starter: [ITEMS.WORLD_ATLAS, ITEMS.POTION, ITEMS.POTION],
@@ -274,7 +285,7 @@ export const calculateBuild = (
     };
 
     // --- Boots: score all options ---
-    const bootScores: Array<{ item: Item; score: number; reason: string }> = [
+    let bootScores: Array<{ item: Item; score: number; reason: string }> = [
         {
             item: ITEMS.MERCURY_TREADS,
             score: ctx.cc * 12 + ctx.ap * 4 + (ctx.burstBot ? 8 : 0) + (ctx.suppression > 0 ? 15 : 0),
@@ -286,11 +297,11 @@ export const calculateBuild = (
             reason: `AA damage reduction vs ${ctx.aaHeavy} physical threats.`,
         },
         {
-            item: ITEMS.MOBILITY_BOOTS,
+            item: ITEMS.SWIFTMARCH,
             score: ctx.roamPriority * 10 + (ctx.hardBot ? 12 : 0) + (ctx.midRoamValue >= 1 ? 8 : 0) + (ctx.tanks >= 2 ? 10 : 0) - (ctx.cc >= 3 ? 14 : 0),
             reason: ctx.hardBot
-                ? 'Hard bot — convert crashes cross-map; Mobility maximizes fight selection.'
-                : 'Roam tempo to mid/jg after shove.',
+                ? 'Hard bot — convert crashes cross-map; Swiftmarch maximizes fight selection.'
+                : 'Roam tempo to mid/jg after shove (Mobility Boots removed — Swiftmarch is the MS path).',
         },
         {
             item: ITEMS.IONIAN_BOOTS,
@@ -298,13 +309,14 @@ export const calculateBuild = (
             reason: 'Ability haste for Q/E/R cadence in skirmishes.',
         },
     ];
+    bootScores = applyThreatScoring(bootScores, threats);
     bootScores.sort((a, b) => b.score - a.score);
     const bestBoot = bootScores[0];
     build.boots = { ...bestBoot.item, reason: bestBoot.reason };
 
     // --- Core slot 2 candidates (Umbral is always slot 1 for Pyke identity) ---
     type Scored = { item: Item; score: number; reason: string };
-    const core2: Scored[] = [
+    let core2: Scored[] = [
         {
             item: ITEMS.VOLTAIC_CYCLOSWORD,
             score: 40 + ctx.squishies * 10 - ctx.tanks * 6 + (ctx.burstBot ? 6 : 0) - (ctx.hardBot ? 4 : 0),
@@ -328,6 +340,7 @@ export const calculateBuild = (
             reason: 'Stack AD on takedowns when resets are the win condition.',
         },
     ];
+    core2 = applyThreatScoring(core2, threats);
     core2.sort((a, b) => b.score - a.score);
     const second = core2[0];
 
@@ -340,7 +353,7 @@ export const calculateBuild = (
     ];
 
     // --- Situational: score then take top with threshold ---
-    const situationalPool: Scored[] = [
+    let situationalPool: Scored[] = [
         {
             item: ITEMS.MERCURIAL_SCIMITAR,
             score: ctx.suppression * 40,
@@ -389,7 +402,7 @@ export const calculateBuild = (
         {
             item: ITEMS.VOLTAIC_CYCLOSWORD,
             score: second.item.id === ITEMS.VOLTAIC_CYCLOSWORD.id ? -100 : 14 + ctx.squishies * 3,
-            reason: 'Burst spike if you went mobility second.',
+            reason: 'Burst spike if you went roam MS second.',
         },
         {
             item: ITEMS.HUBRIS,
@@ -403,11 +416,12 @@ export const calculateBuild = (
         },
     ];
 
+    situationalPool = applyThreatScoring(situationalPool, threats);
     const coreIds = new Set(build.core.map((i) => i.id));
     const picked = situationalPool
         .filter((s) => s.score >= 18 && !coreIds.has(s.item.id))
         .sort((a, b) => b.score - a.score)
-        .slice(0, 4)
+        .slice(0, 5)
         .map((s) => ({ ...s.item, reason: s.reason }));
 
     build.situational = picked;
@@ -415,8 +429,11 @@ export const calculateBuild = (
     const buildPathItems: Item[] = [
         ITEMS.WORLD_ATLAS,
         { ...ITEMS.POTION, reason: 'Open Atlas + pots — play for your first decisive spike.' },
+        { ...ITEMS.CONTROL_WARD, reason: 'VISION: first back pink — then hold 1–2 every recall.' },
         { ...build.core[0], reason: 'RUSH: ' + (build.core[0].reason || 'Core.') },
-        { ...build.boots, reason: 'BOOTS: ' + (build.boots.reason || 'Tempo.') },
+        { ...build.boots, reason: 'BOOTS: ' + (build.boots.reason || 'Buy full chain to the upgrade.') },
+        { ...ITEMS.ORACLE_LENS, reason: 'SWEEP: swap Oracle ~9 min or with Umbral — clear before fights.' },
+        { ...ITEMS.BLOODSONG, reason: 'QUEST: finish Atlas into Bloodsong for AD + execute amp.' },
         { ...build.core[1], reason: 'SPIKE: ' + (build.core[1].reason || 'Second core.') },
         ...build.situational,
         { id: '2140', name: 'Elixir of Wrath', icon: 'Elixir_of_Wrath', reason: 'Elixir for the fight that ends the game.' },
@@ -503,19 +520,30 @@ export const calculateRunes = (
         reasons[8014] = 'Coup de Grace: extra damage on low targets — sharpens R threshold.';
     }
 
-    // Stat shards — adaptive / adaptive / health, swap flex to armor/MR when burst is extreme
+    // Stat shards (26.x+): Offense 5008/5005/5007 | Flex 5008/5010/5001 | Defense 5011/5013/5001
+    // Armor (5002) / MR (5003) were removed — LCU rejects pages that still send them.
     let flexShard = 5008; // Adaptive
+    let defenseShard = 5001; // Health Scaling
     let flexReason = 'Flex Adaptive: raw damage for fight spikes.';
-    if (ctx.burstBot && ctx.ap >= 2) {
-        flexShard = 5003; // MR
-        flexReason = 'Flex MR: survive the AP bot burst long enough to cast.';
-    } else if (ctx.assassins >= 2 && ctx.ap < 2) {
-        flexShard = 5002; // Armor
-        flexReason = 'Flex Armor: live the AD assassin all-in into your R.';
+    let defenseReason = 'Health scaling: HP buffer for engage depth.';
+    const runeThreats = activeThreats(enemyTeam);
+    if (runeThreats.length > 0 && runeThreats[0].preferDefenseShard) {
+        defenseShard = runeThreats[0].preferDefenseShard;
+        flexShard = 5001;
+        flexReason = `Flex HP scaling vs ${runeThreats[0].name} — live long enough to cast.`;
+        defenseReason = `Defense shard forced by ${runeThreats[0].name} — survive the pattern that actually kills you.`;
+    } else if (ctx.burstBot || ctx.assassins >= 2) {
+        flexShard = 5001;
+        defenseShard = 5011;
+        flexReason = 'Flex HP scaling: survive the burst window into your R.';
+        defenseReason = 'Flat Health: live the all-in long enough to execute.';
+    } else if (ctx.cc >= 3) {
+        defenseShard = 5013;
+        defenseReason = 'Tenacity: finish engages through chain CC.';
     }
     reasons[5008] = 'Offense Adaptive: maximize lethality scaling.';
     reasons[flexShard] = flexReason;
-    reasons[5001] = 'Health scaling: HP buffer for engage depth.';
+    reasons[defenseShard] = defenseReason;
 
     return {
         name: 'Pyke Dominator',
@@ -530,7 +558,7 @@ export const calculateRunes = (
             secondaryRune2,
             5008,
             flexShard,
-            5001,
+            defenseShard,
         ],
         reasons,
     };
@@ -549,6 +577,8 @@ export interface MatchupAnalysis {
     botLaneMatchup?: BotLaneMatchup;
     damageAnalysis?: DamageAnalysis;
     roamAdvice?: string;
+    /** Bait ability + priority target line for the overlay. */
+    preyFocus?: string;
 }
 
 export interface BotLaneMatchup {
@@ -779,7 +809,7 @@ const calculateBotLaneDamage = (
     };
 };
 
-const analyzeBotLaneMatchup = (
+export const analyzeBotLaneMatchup = (
     enemyTeam: Champion[],
     yourADC: Champion | null,
     pykeDamage?: DamageAnalysis
@@ -1009,26 +1039,55 @@ export const analyzeMatchup = (
     ];
     analysis.tips = [...analysis.tips, ...expertQuirks].slice(0, 7);
 
-    // Roam advice — always mid-mobility aware
-    const roamParts: string[] = [];
-    if (ctx.midRoamValue >= 2) {
-        roamParts.push('MID PRIORITY: enemy mid is punishable — shove bot and W river on their crash.');
-    } else if (ctx.midRoamValue <= 0) {
-        roamParts.push(
-            'MID LOW VALUE: mobile/waveclear mid negates blind roams — sync with ally CC or take jg/top instead.'
-        );
-    } else {
-        roamParts.push('MID TIMED: roam mid only on spent dashes or with ally setup.');
+    // Named threat answers (Naafiri etc.) outrank generic advice
+    const threats = activeThreats(enemyTeam);
+    if (threats.length > 0) {
+        analysis.majorThreats = [...threats.map((t) => t.name), ...analysis.majorThreats].slice(0, 3);
+        analysis.tips = [...threatTips(threats), ...analysis.tips];
     }
+
+    // Roam advice — a cross-map play is only "strong" when no carry has to die for it
+    const crossMap = evaluateCrossMap({
+        target: enemyTeam.find((c) => c.id === ctx.enemyMidId) || null,
+        allies: [allyMid || null, yourADC || null],
+        homeCarry: yourADC || null,
+        enemyTeam,
+        hardBot: ctx.hardBot,
+        state: 'even',
+        hasUlt: true,
+    });
+
+    const roamParts: string[] = [];
+    if (crossMap.quality === 'avoid') {
+        roamParts.push(`HOLD: ${crossMap.detail}`);
+    } else if (crossMap.quality === 'strong' && ctx.midRoamValue >= 1) {
+        roamParts.push(`MID PRIORITY: ${crossMap.headline} — shove bot and W river on their crash.`);
+    } else {
+        roamParts.push(`MID TIMED: ${crossMap.detail}`);
+    }
+    if (crossMap.notes[0]) roamParts.push(crossMap.notes[0]);
     if (midNotes[0]) roamParts.push(midNotes[0]);
-    if (ctx.hardBot) {
+    if (ctx.hardBot && crossMap.quality !== 'avoid') {
         roamParts.push('Hard bot: every crash is a leave timer — do not donate free time in their pattern.');
     }
     analysis.roamAdvice = roamParts.join(' ');
 
+    if (crossMap.requiresCarrySacrifice) {
+        analysis.tips.push(
+            'This collapse only works if a carry eats the engage first — take vision and the objective clock instead of forcing it.'
+        );
+    }
+
     // Surface roam as a tip
+    const focus = buildPreyFocus(
+        analysis.primaryTargets,
+        enemyTeam.map((c) => c.name),
+        botLaneMatchup?.keyCooldowns
+    );
+    if (focus) analysis.preyFocus = focus.line;
+
     if (analysis.roamAdvice) {
-        analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 6);
+        analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 8);
     }
 
     return analysis;

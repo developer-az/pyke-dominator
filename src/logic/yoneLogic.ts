@@ -11,14 +11,15 @@ import type {
   MatchupAnalysis,
   RunePage,
 } from './pykeLogic';
+import { activeThreats, applyThreatScoring, threatTips } from './counters';
 
 const ITEMS = {
   DORANS_BLADE: { id: '1055', name: "Doran's Blade", icon: 'Doran_s_Blade', reason: 'Default open — AD + sustain for early Q trades.' },
   DORANS_SHIELD: { id: '1054', name: "Doran's Shield", icon: 'Doran_s_Shield', reason: 'Poke / ranged lane — survive until Berserker spike.' },
   POTION: { id: '2003', name: 'Health Potion', icon: 'Health_Potion', reason: 'Lane HP buffer.' },
-  BERSERKERS: { id: '3006', name: "Berserker's Greaves", icon: 'Berserker_s_Greaves', reason: 'Real first spike — AS cuts Q CD; trade windows open here.' },
-  MERCURY: { id: '3111', name: "Mercury's Treads", icon: 'Mercury_s_Treads', reason: 'Tenacity into heavy CC so E/R chains complete.' },
-  STEELCAPS: { id: '3047', name: 'Plated Steelcaps', icon: 'Plated_Steelcaps', reason: 'AA reduction vs AD mid / diver comps.' },
+  BERSERKERS: { id: '3172', name: 'Gunmetal Greaves', icon: 'Gunmetal_Greaves', reason: 'Finish: Boots → Berserker\'s → Gunmetal. AS cuts Q CD.' },
+  MERCURY: { id: '3173', name: 'Chainlaced Crushers', icon: 'Chainlaced_Crushers', reason: 'Finish Mercs → Crushers. Tenacity for E/R chains.' },
+  STEELCAPS: { id: '3174', name: 'Armored Advance', icon: 'Armored_Advance', reason: 'Finish Steelcaps → Armored Advance vs AD mid.' },
   BOTRK: { id: '3153', name: 'Blade of the Ruined King', icon: 'Blade_of_the_Ruined_King', reason: '% current HP + on-hit during E — skirmish core (Skill-Capped).' },
   SHIELDBOW: { id: '6673', name: 'Immortal Shieldbow', icon: 'Immortal_Shieldbow', reason: 'Crit + lifeline — survive the snap-back window.' },
   KRAKEN: { id: '6672', name: 'Kraken Slayer', icon: 'Kraken_Slayer', reason: 'True-damage spike when you need raw kill pressure over shield.' },
@@ -39,7 +40,7 @@ const HARD_MELEE_BULLY = ['Pantheon', 'Irelia', 'Yasuo', 'Akali', 'Zed', 'Diana'
 const EASY_IMMOBILE = [
   'Veigar', 'Malzahar', 'Annie', 'TwistedFate', 'Heimerdinger', 'Swain', 'Lissandra',
 ];
-const MOBILE_ASSASSIN = ['Zed', 'Akali', 'LeBlanc', 'Fizz', 'Qiyana', 'Talon', 'Katarina', 'Ekko'];
+const MOBILE_ASSASSIN = ['Zed', 'Akali', 'LeBlanc', 'Fizz', 'Qiyana', 'Talon', 'Katarina', 'Ekko', 'Naafiri'];
 
 /** Ally junglers who look for early mid ganks / dives. */
 const EARLY_GANK_JG = [
@@ -172,8 +173,10 @@ export function calculateYoneBuild(enemyTeam: Champion[], allyJungle?: Champion 
       reason: 'Cut AA mid / diver damage.',
     },
   ];
-  bootScores.sort((a, b) => b.score - a.score);
-  const boots = { ...bootScores[0].item, reason: bootScores[0].reason };
+  const threats = activeThreats(enemyTeam);
+  const scoredBoots = applyThreatScoring(bootScores, threats);
+  scoredBoots.sort((a, b) => b.score - a.score);
+  const boots = { ...scoredBoots[0].item, reason: scoredBoots[0].reason };
 
   // Core: BotRK → Shieldbow default (OP.GG / Mobalytics patch 26.x); Kraken when kill threat needed
   const wantKraken = ctx.immobile || (ctx.enemyMid && EASY_IMMOBILE.includes(ctx.enemyMid.id));
@@ -228,7 +231,7 @@ export function calculateYoneBuild(enemyTeam: Champion[], allyJungle?: Champion 
   ];
 
   const coreIds = new Set(core.map((i) => i.id));
-  const situational = situPool
+  const situational = applyThreatScoring(situPool, threats)
     .filter((s) => s.score >= 18 && !coreIds.has(s.item.id))
     .sort((a, b) => b.score - a.score)
     .slice(0, 4)
@@ -301,11 +304,18 @@ export function calculateYoneRunes(
         : 'Unflinching: tenacity when sums down — complete R chains.';
   }
 
+  // Stat shards (26.x+): Offense AS | Flex Adaptive | Defense HP/Tenacity
+  // Armor/MR shards (5002/5003) removed — using them breaks LCU export.
   reasons[5005] = 'AS shard: Q CD is everything.';
   reasons[5008] = 'Adaptive: damage for E burst.';
-  const flex = ctx.ap >= 3 ? 5003 : 5002;
-  reasons[5003] = 'MR flex: live AP poke/burst.';
-  reasons[5002] = 'Armor flex: live AD trades.';
+  const defense =
+    ctx.assassin || (ctx.enemyMid && HARD_MELEE_BULLY.includes(ctx.enemyMid.id))
+      ? 5011
+      : ctx.ap >= 3
+        ? 5011
+        : 5001;
+  reasons[5011] = 'Flat Health: live the burst into your E-R window.';
+  reasons[5001] = 'Health scaling: skirmish HP for late E fights.';
 
   return {
     name: 'Yone Mid Dominator',
@@ -320,7 +330,7 @@ export function calculateYoneRunes(
       sec2,
       5005, // AS
       5008, // Adaptive
-      flex,
+      defense,
     ],
     reasons,
   };
@@ -455,7 +465,13 @@ export function analyzeYoneMatchup(
     analysis.tips = [`Boots path: ${build.boots.reason}`, ...analysis.tips].slice(0, 6);
   }
 
-  analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 7);
+  const threats = activeThreats(enemyTeam);
+  if (threats.length > 0) {
+    analysis.majorThreats = [...threats.map((t) => t.name), ...analysis.majorThreats].slice(0, 3);
+    analysis.tips = [...threatTips(threats), ...analysis.tips];
+  }
+
+  analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 8);
   return analysis;
 }
 

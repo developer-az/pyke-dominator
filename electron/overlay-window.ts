@@ -56,9 +56,9 @@ function normalizeFrameCalibration(value: unknown): FrameCalibration | null {
 }
 let interactiveBounds: Electron.Rectangle | null = null;
 
-/** Compact unlocked panel size — must NOT cover the whole game. */
-const INTERACTIVE_WIDTH = 360;
-const INTERACTIVE_HEIGHT = 760;
+/** Compact unlocked panel — keep small so it never eats the game view. */
+const INTERACTIVE_WIDTH = 280;
+const INTERACTIVE_HEIGHT = 380;
 
 /**
  * Fullscreen HUD/minimap guide mode (separate from "Unlocked · Move").
@@ -513,13 +513,39 @@ export function broadcastOverlayMeta(): void {
     });
 }
 
+interface OverlayUpdatePayload {
+    inGame?: boolean;
+    profileHint?: string | null;
+    enemyBotSummoners?: unknown;
+    localPlayer?: { championName?: string } | null;
+    timestamp?: number;
+    [key: string]: unknown;
+}
+
+/**
+ * The main window only needs match state, the profile hint and the bot-lane
+ * timers — sending it the full live payload (every player, every item, every
+ * score) forced a React pass on data it never renders while a game is running.
+ */
+function slimForMainWindow(payload: OverlayUpdatePayload): OverlayUpdatePayload {
+    return {
+        inGame: payload.inGame,
+        profileHint: payload.profileHint ?? null,
+        enemyBotSummoners: payload.enemyBotSummoners,
+        localPlayer: payload.localPlayer
+            ? { championName: payload.localPlayer.championName }
+            : null,
+        timestamp: payload.timestamp,
+    };
+}
+
 export function sendOverlayUpdate(payload: unknown): void {
-    // Broadcast to every renderer (overlay + main) so the main window can pause
-    // work / reset UI when match state changes. Previously only the overlay
-    // received updates, so App.tsx never saw inGame transitions.
+    const full = (payload || {}) as OverlayUpdatePayload;
+    const slim = slimForMainWindow(full);
+
     for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-            win.webContents.send('overlay-update', payload);
-        }
+        if (win.isDestroyed()) continue;
+        const isOverlay = overlayWin != null && !overlayWin.isDestroyed() && win.id === overlayWin.id;
+        win.webContents.send('overlay-update', isOverlay ? full : slim);
     }
 }

@@ -7,6 +7,7 @@ import {
     isOverlayUserHidden,
     createOverlayWindow,
     destroyOverlay,
+    getOverlayWindow,
     syncScalesFromLeague,
     keepOverlayOnTop,
 } from './overlay-window';
@@ -40,6 +41,12 @@ const POST_GAME_PHASES = new Set([
 const POLL_IDLE_MS = 2000;
 /** In-game: overlay owns the hot path; slower ticks = less CPU vs League. */
 const POLL_INGAME_MS = 4000;
+/** In-game with the overlay hidden: nothing is rendered, so just track match state. */
+const POLL_INGAME_HIDDEN_MS = 10000;
+/** Clipboard is a synchronous OS call — never more than once per this window. */
+const CLIPBOARD_MIN_INTERVAL_MS = 20000;
+
+let lastClipboardWrite = 0;
 
 export interface CachedEnemy {
     championId: number;
@@ -50,6 +57,9 @@ export interface CachedEnemy {
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let lastChampSelectEnemies: CachedEnemy[] = [];
 let inGame = false;
+/** Consecutive ticks where the match looked over — avoid destroying overlay on blips. */
+let endGameStrikes = 0;
+let destroyOverlayTimer: ReturnType<typeof setTimeout> | null = null;
 let lastLcuConnectAttempt = 0;
 let lastOverlayFingerprint = '';
 let currentPollMs = POLL_IDLE_MS;
@@ -128,12 +138,21 @@ async function cacheChampSelectEnemies(): Promise<void> {
     }
 }
 
+/** Live champion → profile id. Keep in sync with src/logic/profiles.ts. */
+const PROFILE_BY_CHAMPION: Record<string, string> = {
+    pyke: 'pyke-support',
+    pantheon: 'pantheon-support',
+    yone: 'yone-mid',
+};
+
 function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: string | null) {
     const localPlayer = live ? findLocalPlayer(live) : null;
-    const localName = localPlayer?.championName?.toLowerCase() || '';
+    const localName = (localPlayer?.championName || '').toLowerCase().replace(/[^a-z]/g, '');
     const isPyke = localPlayer ? localName === 'pyke' : true;
     const isYone = localPlayer ? localName === 'yone' : false;
-    const profileHint = isYone ? 'yone-mid' : isPyke ? 'pyke-support' : null;
+    const profileHint = localPlayer
+        ? PROFILE_BY_CHAMPION[localName] ?? null
+        : 'pyke-support';
 
     const enemyPlayers =
         live?.allPlayers?.filter((p) => localPlayer && p.team !== localPlayer.team) || [];
@@ -164,9 +183,12 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
     }
     ingestLiveEvents(live?.events?.Events, nameToChampion);
 
-    // Auto-copy ADC Flash/Heal/Barrier when they come back up
+    // Auto-copy ADC Flash/Heal/Barrier when they come back up. Clipboard writes
+    // are a synchronous OS call — throttle so a flapping timer can never turn
+    // into a write on every tick while a match is running.
     const clip = consumeSummonerClipboard();
-    if (clip) {
+    if (clip && Date.now() - lastClipboardWrite > CLIPBOARD_MIN_INTERVAL_MS) {
+        lastClipboardWrite = Date.now();
         try {
             clipboard.writeText(clip);
         } catch {
@@ -220,8 +242,9 @@ function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): st
     const enemyKey = (payload.enemies || [])
         .map((e) => `${e.championName}:${e.level}:${e.isDead ? 1 : 0}`)
         .join('|');
-    // Bucket game time to ~3s so we don't redraw every tick on the clock alone
-    const timeBucket = Math.floor((payload.gameTime || 0) / 3);
+    // 1s buckets — ward countdown / cannon windows need second-level updates.
+    // Poll is already ~4s, so this just avoids skipping a tick inside a 6s bin.
+    const timeBucket = Math.floor((payload.gameTime || 0) / 1);
     return [
         payload.gameflowPhase || '',
         payload.gameMode || '',
@@ -256,11 +279,15 @@ function setPollCadence(ms: number): void {
 
 function endGameSession(): void {
     inGame = false;
+    endGameStrikes = 0;
     resetMatchCaches();
     hideOverlay();
-    // Tear down the fullscreen transparent window so it cannot keep compositing
-    // over the desktop / next lobby after the match.
-    destroyOverlay();
+    // Delay destroy so a brief phase blip mid-game cannot permanently kill the window.
+    if (destroyOverlayTimer) clearTimeout(destroyOverlayTimer);
+    destroyOverlayTimer = setTimeout(() => {
+        destroyOverlayTimer = null;
+        if (!inGame) destroyOverlay();
+    }, 12000);
     sendOverlayUpdate({
         inGame: false,
         enemies: [],
@@ -298,9 +325,12 @@ async function tick(): Promise<void> {
         }
 
         // Live client is the in-game hot path. Skip the HTTPS hit entirely when we
-        // already know we are in a post-game / lobby phase (saves sockets + CPU).
+        // already know we are in a post-game / lobby phase (saves sockets + CPU),
+        // and when the overlay is hidden there is nothing to feed — only the
+        // gameflow phase matters for knowing the match ended.
+        const overlayHidden = isOverlayUserHidden();
         let live: LiveClientAllGameData | null = null;
-        if (phaseInGame || phase === null || inGame) {
+        if ((phaseInGame || phase === null || inGame) && !(overlayHidden && phaseInGame)) {
             if (!phaseIsPostGame || inGame) {
                 live = await fetchLiveClientData();
             }
@@ -315,27 +345,52 @@ async function tick(): Promise<void> {
         if (shouldShow) {
             const wasInGame = inGame;
             inGame = true;
-            setPollCadence(POLL_INGAME_MS);
+            endGameStrikes = 0;
+            if (destroyOverlayTimer) {
+                clearTimeout(destroyOverlayTimer);
+                destroyOverlayTimer = null;
+            }
+            setPollCadence(overlayHidden ? POLL_INGAME_HIDDEN_MS : POLL_INGAME_MS);
 
             if (!wasInGame) {
                 syncScalesFromLeague();
-                if (!isOverlayUserHidden()) {
+                if (!overlayHidden) {
                     createOverlayWindow();
                     showOverlay();
                 }
                 onGameStateChange?.(true);
-            } else {
+            } else if (!overlayHidden) {
+                // Self-heal: window was destroyed mid-match — bring it back
+                if (!getOverlayWindow()) {
+                    createOverlayWindow();
+                    showOverlay();
+                }
                 keepOverlayOnTop();
             }
 
-            const payload = buildOverlayPayload(live, phase);
-            const fp = overlayFingerprint(payload);
-            if (fp !== lastOverlayFingerprint) {
-                lastOverlayFingerprint = fp;
-                sendOverlayUpdate(payload);
+            if (overlayHidden) {
+                // Nothing is drawing — send match state once so the main window
+                // stays parked, then skip all payload/fingerprint work.
+                if (!wasInGame) {
+                    sendOverlayUpdate({ inGame: true, timestamp: Date.now() });
+                }
+            } else {
+                const payload = buildOverlayPayload(live, phase);
+                const fp = overlayFingerprint(payload);
+                if (fp !== lastOverlayFingerprint) {
+                    lastOverlayFingerprint = fp;
+                    sendOverlayUpdate(payload);
+                }
             }
         } else if (inGame) {
-            endGameSession();
+            // Confirmed post-game ends immediately; otherwise require 3 missed ticks
+            // (~12s) so a null phase / live-client hiccup cannot delete the overlay.
+            if (phaseIsPostGame) {
+                endGameSession();
+            } else {
+                endGameStrikes += 1;
+                if (endGameStrikes >= 3) endGameSession();
+            }
         } else if (!inGame) {
             // Pregame: push bot summoner intel to main UI occasionally (no overlay window)
             const summons = serializeSummoners();

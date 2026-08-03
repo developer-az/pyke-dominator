@@ -1,22 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Champion,
   type Build,
-  type RunePage,
   type MatchupAnalysis,
 } from '../logic/pykeLogic';
-import { getProfile, loadStoredProfileId, type ProfileId } from '../logic/profiles';
+import { getProfile, isProfileId, loadStoredProfileId, type ProfileId } from '../logic/profiles';
 import {
   buildInGameCues,
   formatGameTime,
+  getWardStatus,
+  remainingBuildItems,
   resolveAllyAdcName,
   resolveAllyMidName,
   resolveAllyJungleName,
+  resolveProfileId,
+  situationFromState,
   type OverlayState,
 } from './overlayLogic';
 import { SummonerTimers } from '../components/SummonerTimers';
 import { ChromeMark } from './ChromeMark';
 import { ChromeGameHud } from './ChromeGameHud';
+import { WardIndicator } from './WardIndicator';
 
 function damageTypeFromTags(tags: string[]): Champion['damageType'] {
   return tags.includes('Mage') || tags.includes('Support') ? 'Magic' : 'Physical';
@@ -102,12 +106,9 @@ export const OverlayApp: React.FC = () => {
     const unsubUpdate = window.electronAPI.onOverlayUpdate((payload) => {
       const next = payload as OverlayState;
       setState(next);
-      if (next.profileHint === 'yone-mid' || next.profileHint === 'pyke-support') {
-        setProfileId(next.profileHint);
-      } else if (next.isYone) {
-        setProfileId('yone-mid');
-      } else if (next.isPyke) {
-        setProfileId('pyke-support');
+      const resolved = resolveProfileId(next);
+      if (isProfileId(resolved)) {
+        setProfileId((prev) => (prev === resolved ? prev : resolved));
       }
     });
 
@@ -173,103 +174,117 @@ export const OverlayApp: React.FC = () => {
     };
   }, []);
 
+  // Payloads arrive with fresh array identities every push; key on content so the
+  // (expensive) build/rune/matchup math only re-runs when something real changed.
+  const enemyKey =
+    state.enemies && state.enemies.length > 0
+      ? state.enemies.map((e) => e.championName).join('|')
+      : (state.cachedChampSelectEnemies || []).map((e) => e.championName || `#${e.championId}`).join('|');
+  const allyKey = (state.allies || []).map((a) => `${a.position || ''}:${a.championName}`).join('|');
+
   const enemyChampions: Champion[] = useMemo(() => {
-    if (!champions.length) return [];
+    if (!champions.length || !enemyKey) return [];
+    const findChampion = (token: string): Champion | null => {
+      if (token.startsWith('#')) {
+        return champions.find((c) => c.key === token.slice(1)) || null;
+      }
+      const lower = token.toLowerCase();
+      return (
+        champions.find((c) => c.name.toLowerCase() === lower || c.id.toLowerCase() === lower) || null
+      );
+    };
+    return enemyKey
+      .split('|')
+      .map(findChampion)
+      .filter((c): c is Champion => c !== null);
+  }, [enemyKey, champions]);
 
-    if (state.enemies && state.enemies.length > 0) {
-      return state.enemies
-        .map((e) => {
-          const found = champions.find(
-            (c) => c.name.toLowerCase() === e.championName.toLowerCase() || c.id.toLowerCase() === e.championName.toLowerCase()
-          );
-          return found || null;
-        })
-        .filter((c): c is Champion => c !== null);
+  const allyChampions = useMemo(() => {
+    if (!champions.length || !allyKey) {
+      return { adc: null as Champion | null, mid: null as Champion | null, jungle: null as Champion | null };
     }
+    const allies = allyKey.split('|').map((token) => {
+      const [position, championName] = token.split(':');
+      return { position, championName, level: 0 };
+    });
+    const byName = (name: string | null): Champion | null => {
+      if (!name) return null;
+      const lower = name.toLowerCase();
+      return champions.find((c) => c.name.toLowerCase() === lower || c.id.toLowerCase() === lower) || null;
+    };
+    return {
+      adc: byName(resolveAllyAdcName(allies, champions)),
+      mid: byName(resolveAllyMidName(allies, champions)),
+      jungle: byName(resolveAllyJungleName(allies, champions)),
+    };
+  }, [allyKey, champions]);
 
-    // Fallback: last champ select
-    if (state.cachedChampSelectEnemies?.length) {
-      return state.cachedChampSelectEnemies
-        .map((e) => {
-          if (e.championId) {
-            const byKey = champions.find((c) => c.key === String(e.championId));
-            if (byKey) return byKey;
-          }
-          if (e.championName) {
-            return champions.find((c) => c.name.toLowerCase() === e.championName!.toLowerCase()) || null;
-          }
-          return null;
-        })
-        .filter((c): c is Champion => c !== null);
-    }
+  const allyPartner = profileId === 'yone-mid' ? allyChampions.jungle : allyChampions.mid;
+  const adcForProfile = profileId === 'yone-mid' ? null : allyChampions.adc;
 
-    return [];
-  }, [state.enemies, state.cachedChampSelectEnemies, champions]);
-
-  const yourAdcChampion: Champion | null = useMemo(() => {
-    if (!champions.length) return null;
-    const name = resolveAllyAdcName(state.allies, champions);
-    if (!name) return null;
-    return (
-      champions.find(
-        (c) => c.name.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  }, [state.allies, champions]);
-
-  const yourMidChampion: Champion | null = useMemo(() => {
-    if (!champions.length || profileId === 'yone-mid') return null;
-    const name = resolveAllyMidName(state.allies, champions);
-    if (!name) return null;
-    return (
-      champions.find(
-        (c) => c.name.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  }, [state.allies, champions, profileId]);
-
-  const yourJungleChampion: Champion | null = useMemo(() => {
-    if (!champions.length || profileId !== 'yone-mid') return null;
-    const name = resolveAllyJungleName(state.allies, champions);
-    if (!name) return null;
-    return (
-      champions.find(
-        (c) => c.name.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  }, [state.allies, champions, profileId]);
-
-  const allyPartner = profileId === 'yone-mid' ? yourJungleChampion : yourMidChampion;
-  const adcForProfile = profileId === 'yone-mid' ? null : yourAdcChampion;
+  // Behind / even / ahead — only Pantheon changes recommendations on it, but the
+  // read itself is cheap and drives cues for every profile.
+  const situationKey = `${state.localPlayer?.level ?? 0}:${state.localPlayer?.scores?.kills ?? 0}:${
+    state.localPlayer?.scores?.deaths ?? 0
+  }:${state.localPlayer?.scores?.assists ?? 0}:${Math.floor((state.gameTime ?? 0) / 60)}`;
+  const situation = useMemo(
+    () => situationFromState(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [situationKey, enemyKey]
+  );
 
   const build: Build | null = useMemo(
     () =>
       enemyChampions.length > 0
-        ? profile.calculateBuild(enemyChampions, adcForProfile, allyPartner)
+        ? profile.calculateBuild(enemyChampions, adcForProfile, allyPartner, situation)
         : null,
-    [enemyChampions, adcForProfile, allyPartner, profile]
-  );
-
-  const runes: RunePage | null = useMemo(
-    () =>
-      enemyChampions.length > 0 && build
-        ? profile.calculateRunes(enemyChampions, build, adcForProfile, allyPartner)
-        : null,
-    [enemyChampions, build, adcForProfile, allyPartner, profile]
+    [enemyChampions, adcForProfile, allyPartner, profile, situation]
   );
 
   const analysis: MatchupAnalysis | null = useMemo(
     () =>
       enemyChampions.length > 0 && build
-        ? profile.analyzeMatchup(enemyChampions, build, adcForProfile, allyPartner)
+        ? profile.analyzeMatchup(enemyChampions, build, adcForProfile, allyPartner, situation)
         : null,
-    [enemyChampions, build, adcForProfile, allyPartner, profile]
+    [enemyChampions, build, adcForProfile, allyPartner, profile, situation]
   );
 
-  const cues = useMemo(
-    () => buildInGameCues(state, { analysis, build, profileId }),
-    [state, analysis, build, profileId]
+  const rawCues = useMemo(
+    () => buildInGameCues(state, { analysis, build, profileId, situation }),
+    [state, analysis, build, profileId, situation]
   );
+
+  // Cue TTLs — roam/tempo lines die fast so the panel stays game-timed
+  const cueFirstSeen = useRef<Map<string, number>>(new Map());
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => {
+    // Reset TTLs when match ends / restarts
+    if (!state.inGame) cueFirstSeen.current.clear();
+  }, [state.inGame]);
+
+  const cues = useMemo(() => {
+    const now = nowTick;
+    const seen = cueFirstSeen.current;
+    const activeIds = new Set(rawCues.map((c) => c.id));
+    for (const id of [...seen.keys()]) {
+      if (!activeIds.has(id)) seen.delete(id);
+    }
+    return rawCues.filter((cue) => {
+      if (!seen.has(cue.id)) seen.set(cue.id, now);
+      const age = (now - (seen.get(cue.id) || now)) / 1000;
+      const maxAge = cue.maxAgeSec ?? 30;
+      return age <= maxAge;
+    });
+  }, [rawCues, nowTick]);
+
+  const wardStatus = useMemo(() => getWardStatus(state, profileId), [state, profileId]);
+
+  // Items still to buy — anything already in the inventory (by item ID) drops off.
+  const itemsLeft = useMemo(() => remainingBuildItems(state, build).slice(0, 3), [state, build]);
 
   const handleHide = () => {
     void window.electronAPI?.toggleOverlay?.().catch((error) => {
@@ -330,15 +345,6 @@ export const OverlayApp: React.FC = () => {
     !state.localPlayer?.championName ||
     state.localPlayer.championName.toLowerCase() === profile.championId.toLowerCase();
 
-  const gameModeLabel = state.gameMode === 'PRACTICETOOL'
-    ? 'Practice Tool'
-    : state.gameMode || 'In Game';
-
-  const runeSummary =
-    profileId === 'yone-mid'
-      ? `${runes?.selectedPerkIds[0] === 8021 ? 'Fleet' : 'Lethal Tempo'} · Resolve`
-      : `Hail of Blades · ${runes?.subStyleId === 8400 ? 'Resolve' : 'Precision'}`;
-
   return (
     <div
       className="w-screen h-screen bg-transparent overflow-hidden select-none"
@@ -397,93 +403,74 @@ export const OverlayApp: React.FC = () => {
       <div
         className={
           compactPanel
-            ? `hud-overlay-scale absolute inset-2 ${collapsed ? 'opacity-70' : 'opacity-100'}`
-            : `hud-overlay-scale absolute top-16 right-4 w-[280px] ${collapsed ? 'opacity-70' : 'opacity-100'}`
+            ? `hud-overlay-scale absolute inset-1.5 ${collapsed ? 'opacity-70' : 'opacity-100'}`
+            : `hud-overlay-scale absolute top-14 right-3 w-[210px] ${collapsed ? 'opacity-70' : 'opacity-100'}`
         }
       >
-        <div className="hud-overlay-panel h-full">
+        <div className="hud-overlay-panel h-full overflow-hidden">
           <span className="hud-corner hud-corner-tl" aria-hidden />
           <span className="hud-corner hud-corner-br" aria-hidden />
           <span className="hud-rail hud-rail-top" aria-hidden />
 
           <div
-            className="hud-chrome-header"
+            className="hud-chrome-header !py-1 !px-2"
             style={compactPanel ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <ChromeMark className="hud-chrome-mark" size={13} />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <ChromeMark className="hud-chrome-mark" size={11} />
               <div className="min-w-0">
-                <div className="hud-chrome-title truncate">
+                <div className="hud-chrome-title truncate text-[11px]">
                   {profile.brandTitle}
                 </div>
-                <div className="hud-chrome-meta">
-                  {profile.shortLabel} · {gameModeLabel}
+                <div className="hud-chrome-meta !text-[8px]">
+                  {profile.shortLabel}
                   {typeof state.gameTime === 'number' && state.gameTime > 0
                     ? ` · ${formatGameTime(state.gameTime)}`
                     : ''}
-                  {state.localPlayer ? ` · Lv ${state.localPlayer.level}` : ''}
-                  {compactPanel ? ' · Drag to move' : ''}
+                  {state.localPlayer ? ` · ${state.localPlayer.level}` : ''}
                 </div>
               </div>
             </div>
             {compactPanel && (
               <div
-                className="flex flex-wrap gap-1 justify-end"
+                className="flex gap-0.5 justify-end shrink-0"
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               >
-                <button
-                  type="button"
-                  onClick={() => handleAlignMode(true)}
-                  className="hud-btn"
-                  title="Fullscreen HUD/minimap guides to nudge fit"
-                >
-                  Align HUD
+                <button type="button" onClick={() => handleAlignMode(true)} className="hud-btn" title="Align HUD">
+                  Align
                 </button>
-                <button
-                  type="button"
-                  onClick={handleToggleClicks}
-                  className="hud-btn"
-                  title="Lock overlay — clicks pass through to League (Ctrl+Shift+U)"
-                >
+                <button type="button" onClick={handleToggleClicks} className="hud-btn" title="Lock">
                   Lock
                 </button>
-                <button
-                  type="button"
-                  onClick={handleHide}
-                  className="hud-btn"
-                  title="Hide overlay (Ctrl+Shift+H)"
-                >
+                <button type="button" onClick={handleHide} className="hud-btn" title="Hide">
                   Hide
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((c) => !c)}
-                  className="hud-btn"
-                >
-                  {collapsed ? 'Expand' : 'Min'}
+                <button type="button" onClick={() => setCollapsed((c) => !c)} className="hud-btn">
+                  {collapsed ? '+' : '–'}
                 </button>
               </div>
             )}
           </div>
 
           {!collapsed && (
-            <div className="relative z-10 p-2.5 space-y-2 max-h-[60vh] overflow-y-auto">
+            <div className="relative z-10 px-2 py-1.5 space-y-1 overflow-hidden">
               {!profileMatchesLocal ? (
-                <div className="hud-chrome-cue hud-chrome-cue--warn text-[11px]">
-                  Playing <strong>{state.localPlayer?.championName || 'unknown'}</strong> —
-                  switch profile in the main client for full cues ({profile.label} loaded).
+                <div className="hud-chrome-cue hud-chrome-cue--warn !text-[10px] !py-1">
+                  Switch profile → {state.localPlayer?.championName || '?'}
                 </div>
               ) : null}
+
+              <WardIndicator status={wardStatus} compact />
 
               {cues.map((cue) => (
                 <div
                   key={cue.id}
-                  className={`hud-chrome-cue hud-chrome-cue--${cue.urgency}`}
+                  className={`hud-chrome-cue hud-chrome-cue--${cue.urgency} !py-1 !px-1.5`}
                 >
-                  <div className="font-semibold uppercase tracking-[0.12em] text-[9px] opacity-90">
+                  <div className="font-semibold uppercase tracking-[0.1em] text-[8px] opacity-90">
                     {cue.label}
                   </div>
-                  <div className="mt-0.5 opacity-85 text-[11px] leading-snug">{cue.detail}</div>
+                  <div className="mt-0.5 opacity-85 text-[10px] leading-snug">{cue.detail}</div>
                 </div>
               ))}
 
@@ -491,42 +478,29 @@ export const OverlayApp: React.FC = () => {
                 <SummonerTimers lanes={state.enemyBotSummoners} compact />
               )}
 
-              {build && (
-                <div className="flex flex-wrap gap-1 items-center">
-                  {build.core.map((item) => (
-                    <span key={`core-${item.id}`} className="hud-chip !text-[10px]" title={item.reason}>
+              {itemsLeft.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 items-center">
+                  {itemsLeft.map((item, index) => (
+                    <span
+                      key={`left-${item.id}`}
+                      className={`hud-chip !text-[9px] !py-0${index === 0 ? ' hud-accent-blood' : ''}`}
+                      title={item.reason}
+                    >
+                      {index === 0 ? '▸ ' : ''}
                       {item.name}
                     </span>
                   ))}
-                  <span className="hud-chip !text-[10px] !text-[#aeb4be]" title={build.boots.reason}>
-                    {build.boots.name}
-                  </span>
                 </div>
               )}
 
-              {runes && (
-                <p className="text-[10px] text-[#8a919c] font-mono tracking-wide">
-                  {runeSummary}
-                </p>
-              )}
-
-              {analysis && (
-                <div className="border-t border-white/10 pt-1.5">
-                  <div className="text-[11px] font-semibold text-[#e4e6ea]">
-                    {analysis.aggressionLevel} · {analysis.title}
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {analysis.primaryTargets.slice(0, 2).map((t) => (
-                      <span key={t} className="hud-chip hud-accent-blood !text-[10px]">
-                        Prey {t}
-                      </span>
-                    ))}
-                  </div>
+              {analysis?.preyFocus && !cues.some((c) => c.id === 'prey-focus') && (
+                <div className="text-[10px] text-[#e4e6ea] leading-snug opacity-90">
+                  {analysis.preyFocus}
                 </div>
               )}
 
               {!build && (
-                <p className="text-[11px] text-[#6b7280] font-mono tracking-wide">
+                <p className="text-[10px] text-[#6b7280] font-mono tracking-wide">
                   Waiting for enemy data…
                 </p>
               )}
