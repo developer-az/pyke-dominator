@@ -143,6 +143,10 @@ npm run dist
 
 # Unpackaged app dir (faster local check)
 npm run pack
+
+# Product landing site (website/)
+npm run website:dev
+npm run website:build
 ```
 
 | Script | Purpose |
@@ -153,6 +157,8 @@ npm run pack
 | `npm run electron:build` | Compile Electron main process |
 | `npm run dist` | Build + electron-builder (NSIS + portable) |
 | `npm run pack` | Build + electron-builder `--dir` |
+| `npm run website:dev` | Dominator marketing site (see `website/`) |
+| `npm run website:build` | Build marketing site for Vercel / GitHub Pages |
 | `npm run lint` | ESLint |
 | `npm run preview` | Preview production web build |
 
