@@ -38,12 +38,14 @@ const POST_GAME_PHASES = new Set([
     'None',
 ]);
 
-/** Lobby / champ-select cadence — keep light so LCU stays responsive. */
-const POLL_IDLE_MS = 2000;
+/** Quiet lobby / menu — rare phase checks only. */
+const POLL_IDLE_MS = 5000;
+/** Champ select needs faster enemy/summoner ingest. */
+const POLL_CHAMPSELECT_MS = 2000;
 /** In-game: overlay owns the hot path; slower ticks = less CPU vs League. */
 const POLL_INGAME_MS = 4000;
 /** In-game with the overlay hidden: nothing is rendered, so just track match state. */
-const POLL_INGAME_HIDDEN_MS = 10000;
+const POLL_INGAME_HIDDEN_MS = 12000;
 /** Clipboard is a synchronous OS call — never more than once per this window. */
 const CLIPBOARD_MIN_INTERVAL_MS = 20000;
 
@@ -322,10 +324,14 @@ async function tick(): Promise<void> {
 
         const phaseInGame = phase ? IN_GAME_PHASES.has(phase) : false;
         const phaseIsPostGame = phase ? POST_GAME_PHASES.has(phase) : false;
+        const phaseChampSelect = phase === 'ChampSelect' || phase === 'ReadyCheck';
 
-        // Champ-select enemy + summoner cache only in lobby — never while match is live
-        if (!inGame && !phaseInGame) {
+        // Champ-select ingest only — skip LCU session reads while sitting in lobby/menus
+        if (!inGame && !phaseInGame && phaseChampSelect) {
             await cacheChampSelectEnemies();
+            setPollCadence(POLL_CHAMPSELECT_MS);
+        } else if (!inGame && !phaseInGame) {
+            setPollCadence(POLL_IDLE_MS);
         }
 
         // Live client is the in-game hot path. Skip the HTTPS hit entirely when we

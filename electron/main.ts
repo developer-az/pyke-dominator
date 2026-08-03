@@ -33,7 +33,12 @@ import {
     broadcastOverlayMeta,
     type FrameCalibration,
 } from './overlay-window';
-import { formatAdcClipboard, markSpellUsed, type TrackedRole } from './summoner-tracker';
+import {
+    formatAdcClipboard,
+    markSpellUsed,
+    toggleSpellUsed,
+    type TrackedRole,
+} from './summoner-tracker';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public');
@@ -112,11 +117,29 @@ function registerOverlayHotkeys() {
         broadcastOverlayMeta();
     });
 
+    // Flash toggles — work even while League has focus (global).
+    // PageUp = enemy ADC Flash; PageDown = enemy Support Flash.
+    // Second press clears the timer (undo accidental mark).
+    const adcFlashOk = globalShortcut.register('PageUp', () => {
+        const res = toggleSpellUsed('Bot', 'Flash');
+        if (res.success) pushSummonerUpdate();
+    });
+    const suppFlashOk = globalShortcut.register('PageDown', () => {
+        const res = toggleSpellUsed('Support', 'Flash');
+        if (res.success) pushSummonerUpdate();
+    });
+
     if (!hideOk || !globalShortcut.isRegistered('CommandOrControl+Shift+H')) {
         console.warn('[overlay] Failed to register Ctrl+Shift+H (hide); another app may own it.');
     }
     if (!clickOk || !globalShortcut.isRegistered('CommandOrControl+Shift+U')) {
         console.warn('[overlay] Failed to register Ctrl+Shift+U (lock/unlock); another app may own it.');
+    }
+    if (!adcFlashOk || !globalShortcut.isRegistered('PageUp')) {
+        console.warn('[overlay] Failed to register PageUp (ADC Flash toggle).');
+    }
+    if (!suppFlashOk || !globalShortcut.isRegistered('PageDown')) {
+        console.warn('[overlay] Failed to register PageDown (Support Flash toggle).');
     }
 }
 
@@ -245,6 +268,17 @@ app.whenReady().then(() => {
             }
         }
     );
+
+    ipcMain.handle('summoner-toggle', async (_event, role: TrackedRole, spellName: string) => {
+        try {
+            const res = toggleSpellUsed(role, spellName);
+            if (res.success) pushSummonerUpdate();
+            return res;
+        } catch (error: unknown) {
+            const err = error as { message?: string };
+            return { success: false, active: false, error: err.message || 'Toggle failed' };
+        }
+    });
 
     // Live Client Data (in-game, including Practice Tool)
     ipcMain.handle('live-client-data', async () => {
