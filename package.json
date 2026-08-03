@@ -1,8 +1,8 @@
 {
   "name": "pyke-dominator",
   "private": true,
-  "version": "1.0.0-beta.4",
-  "description": "Dominator — public beta. League companion with Pyke / Pantheon Support + Yone Mid, LCU export, and in-game overlay",
+  "version": "1.0.0-beta.5",
+  "description": "One Trick — League companion for Pyke / Pantheon Support + Yone Mid. LCU export and in-game overlay.",
   "author": "Az040",
   "repository": {
     "type": "git",
@@ -10,8 +10,8 @@
   },
   "main": "dist-electron/main.js",
   "build": {
-    "appId": "com.pykedominator.app",
-    "productName": "Pyke Dominator",
+    "appId": "com.onetrick.app",
+    "productName": "One Trick",
     "directories": {
       "output": "release"
     },

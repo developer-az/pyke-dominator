@@ -318,7 +318,7 @@ export function calculateYoneRunes(
   reasons[5001] = 'Health scaling: skirmish HP for late E fights.';
 
   return {
-    name: 'Yone Mid Dominator',
+    name: 'One Trick',
     primaryStyleId: 8000,
     subStyleId: 8400,
     selectedPerkIds: [

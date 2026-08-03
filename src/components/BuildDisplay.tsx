@@ -87,7 +87,7 @@ export const BuildDisplay: React.FC<Props> = ({
             <div className="flex flex-wrap justify-between items-center gap-3 border-b border-chrome-silver/20 pb-4 relative">
                 <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-chrome-silver/60 via-transparent to-chrome-blood/40" />
                 <h2 className="hud-heading text-2xl text-chrome-bright drop-shadow-[0_0_8px_rgba(242,244,247,0.2)]">
-                    <ChromeMark size={16} style={{ color: accentColor }} /> Dominator Loadout
+                    <ChromeMark size={16} style={{ color: accentColor }} /> One Trick Loadout
                 </h2>
                 {canExport && (
                     <button

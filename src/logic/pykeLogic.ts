@@ -546,7 +546,7 @@ export const calculateRunes = (
     reasons[defenseShard] = defenseReason;
 
     return {
-        name: 'Pyke Dominator',
+        name: 'One Trick',
         primaryStyleId: 8100,
         subStyleId: secondaryStyleId,
         selectedPerkIds: [

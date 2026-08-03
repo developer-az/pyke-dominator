@@ -322,7 +322,7 @@ export const exportItemSet = async (build: ExportBuildPayload): Promise<void> =>
     const currentSummoner = await resolveCurrentSummoner();
     const summonerId = currentSummoner.summonerId!;
     const championKey = build.championKey ?? 555;
-    const setTitle = build.title || 'Pyke Dominator';
+    const setTitle = build.title || 'One Trick';
     const setsEndpoint = `/lol-item-sets/v1/item-sets/${summonerId}/sets`;
 
     const readCollection = async (): Promise<LCUItemSetsCollection | null> =>

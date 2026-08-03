@@ -781,6 +781,85 @@ html.overlay-root body {
 
 .hud-main-header {
   position: relative;
+  min-height: 7.5rem;
+  padding: 0.75rem 0.25rem 1.25rem;
+}
+
+/* Atmospheric splash — opacity + gradient mask only (no backdrop-filter / blur) */
+.hud-header-splash {
+  position: absolute;
+  inset: -8% -4% auto -4%;
+  height: 140%;
+  background-size: cover;
+  background-position: 60% 22%;
+  background-repeat: no-repeat;
+  opacity: 0.28;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hud-header-splash-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(7, 7, 8, 0.92) 0%, rgba(7, 7, 8, 0.55) 42%, rgba(7, 7, 8, 0.78) 100%),
+    linear-gradient(180deg, rgba(7, 7, 8, 0.15) 0%, rgba(7, 7, 8, 0.95) 92%);
+}
+
+.hud-profile-portrait {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(212, 216, 222, 0.45);
+  box-shadow: 0 0 0 1px rgba(155, 28, 46, 0.35), 0 8px 20px rgba(0, 0, 0, 0.45);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  overflow: hidden;
+  background: #0a0a0c;
+}
+
+.hud-profile-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hud-champ-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid rgba(212, 216, 222, 0.28);
+  image-rendering: auto;
+}
+
+.hud-champ-icon--title {
+  width: 18px;
+  height: 18px;
+}
+
+.hud-champ-icon--xl {
+  width: 72px;
+  height: 72px;
+  border-color: rgba(212, 216, 222, 0.4);
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.hud-league-mark {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  filter: none;
+}
+
+.hud-profile-tab .hud-champ-icon {
+  opacity: 0.85;
+}
+
+.hud-profile-tab:hover .hud-champ-icon,
+.hud-profile-tab.bg-chrome-silver\/20 .hud-champ-icon {
+  opacity: 1;
 }
 
 .hud-scale-control {

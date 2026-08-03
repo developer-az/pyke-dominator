@@ -21,6 +21,7 @@ import { SummonerTimers } from '../components/SummonerTimers';
 import { ChromeMark } from './ChromeMark';
 import { ChromeGameHud } from './ChromeGameHud';
 import { WardIndicator } from './WardIndicator';
+import { championSquareUrl } from '../data/ddragonAssets';
 
 function damageTypeFromTags(tags: string[]): Champion['damageType'] {
   return tags.includes('Mage') || tags.includes('Support') ? 'Magic' : 'Physical';
@@ -417,10 +418,18 @@ export const OverlayApp: React.FC = () => {
             style={compactPanel ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <ChromeMark className="hud-chrome-mark" size={11} />
+              <img
+                src={championSquareUrl(profile.championId)}
+                alt=""
+                width={16}
+                height={16}
+                className="hud-champ-icon shrink-0"
+                decoding="async"
+                draggable={false}
+              />
               <div className="min-w-0">
                 <div className="hud-chrome-title truncate text-[11px]">
-                  {profile.brandTitle}
+                  One Trick
                 </div>
                 <div className="hud-chrome-meta !text-[8px]">
                   {profile.shortLabel}

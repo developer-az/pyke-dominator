@@ -404,7 +404,7 @@ export function calculatePantheonRunes(
     reasons[5013] = 'Tenacity: finish W→Q through chain CC.';
 
     return {
-      name: 'Pantheon Support Dominator',
+      name: 'One Trick',
       primaryStyleId: 8400,
       subStyleId: 8100,
       selectedPerkIds: [8439, 8463, 8473, 8242, 8126, 8106, 5007, flex, defense],
@@ -435,7 +435,7 @@ export function calculatePantheonRunes(
   }
 
   return {
-    name: 'Pantheon Support Dominator',
+    name: 'One Trick',
     primaryStyleId: 8100,
     subStyleId: 8400,
     selectedPerkIds: [8112, 8143, 8137, 8106, 8473, 8242, 5008, flex, defense],

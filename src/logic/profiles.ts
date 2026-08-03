@@ -90,9 +90,9 @@ const pykeSupport: ChampionProfile = {
   role: 'Support',
   label: 'Pyke Support',
   shortLabel: 'Pyke',
-  runePageName: 'Pyke Dominator',
-  itemSetTitle: 'Pyke Dominator',
-  brandTitle: 'Pyke Dominator',
+  runePageName: 'One Trick',
+  itemSetTitle: 'One Trick · Pyke',
+  brandTitle: 'One Trick',
   focusAllies: ['YourADC', 'YourMid'],
   primaryEnemyRole: 'Support',
   situationAware: false,
@@ -109,9 +109,9 @@ const pantheonSupport: ChampionProfile = {
   role: 'Support',
   label: 'Pantheon Support',
   shortLabel: 'Pantheon',
-  runePageName: 'Pantheon Support Dominator',
-  itemSetTitle: 'Pantheon Support Dominator',
-  brandTitle: 'Pantheon Dominator',
+  runePageName: 'One Trick',
+  itemSetTitle: 'One Trick · Pantheon',
+  brandTitle: 'One Trick',
   // Engage support: the ADC is who you play through, mid is the roam target.
   focusAllies: ['YourADC', 'YourMid'],
   primaryEnemyRole: 'Support',
@@ -133,9 +133,9 @@ const yoneMid: ChampionProfile = {
   role: 'Mid',
   label: 'Yone Mid',
   shortLabel: 'Yone',
-  runePageName: 'Yone Mid Dominator',
-  itemSetTitle: 'Yone Mid Dominator',
-  brandTitle: 'Yone Dominator',
+  runePageName: 'One Trick',
+  itemSetTitle: 'One Trick · Yone',
+  brandTitle: 'One Trick',
   // You ARE mid — ally context is jungle pathing / dive sync, not another mid
   focusAllies: ['YourJungle'],
   primaryEnemyRole: 'Mid',
@@ -143,7 +143,7 @@ const yoneMid: ChampionProfile = {
   calculateBuild: (enemies, _adc, allyJungle) => calculateYoneBuild(enemies, allyJungle),
   calculateRunes: (enemies, _build, _adc, allyJungle) => {
     const page = calculateYoneRunes(enemies, allyJungle);
-    return { ...page, name: 'Yone Mid Dominator' };
+    return { ...page, name: 'One Trick' };
   },
   analyzeMatchup: (enemies, build, _adc, allyJungle) => analyzeYoneMatchup(enemies, build, allyJungle),
   calculateDominance: (enemies, build, _adc, allyJungle) =>

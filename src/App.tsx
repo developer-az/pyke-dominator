@@ -17,6 +17,12 @@ import {
 import type { OverlayBotSummoner } from './overlay/overlayLogic';
 import { ChromeMark } from './overlay/ChromeMark';
 import { CHROME_COLOR_PRESETS, normalizeChromeColor } from './overlay/chromeTheme';
+import {
+  championSquareUrl,
+  championSplashUrl,
+  leagueMarkUrl,
+  warmDdragonVersion,
+} from './data/ddragonAssets';
 
 
 
@@ -59,21 +65,15 @@ const App: React.FC = () => {
     storeProfileId(id);
   };
 
-  // Fetch Champions
+  // Fetch Champions + warm Data Dragon version for icon/splash URLs
   useEffect(() => {
-    // Try to fetch latest version first
-    fetch('https://ddragon.leagueoflegends.com/api/versions.json')
-      .then(res => res.json())
-      .then(versions => {
-        const latestVersion = versions[0] || '15.1.1';
-        return fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`);
-      })
-      .catch(() => {
-        // Fallback to known version
-        return fetch('https://ddragon.leagueoflegends.com/cdn/15.1.1/data/en_US/champion.json');
-      })
-      .then(res => res.json())
-      .then(data => {
+    void warmDdragonVersion()
+      .then((latestVersion) =>
+        fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`)
+      )
+      .catch(() => fetch('https://ddragon.leagueoflegends.com/cdn/15.1.1/data/en_US/champion.json'))
+      .then((res) => res.json())
+      .then((data) => {
         interface ChampionData {
           id: string;
           key: string;
@@ -87,11 +87,11 @@ const App: React.FC = () => {
           key: c.key,
           name: c.name,
           tags: c.tags,
-          damageType: c.tags.includes('Mage') || c.tags.includes('Support') ? 'Magic' : 'Physical' // Simplified approximation
+          damageType: c.tags.includes('Mage') || c.tags.includes('Support') ? 'Magic' : 'Physical',
         }));
         setChampions(list);
       })
-      .catch(error => {
+      .catch((error) => {
         console.error('Failed to fetch champions:', error);
       });
   }, []);
@@ -646,8 +646,25 @@ const App: React.FC = () => {
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2 text-xs text-chrome-dim font-semibold">
-            <ChromeMark size={12} style={{ color: chromeColor }} />
-            <span className="font-display tracking-[0.22em] uppercase text-chrome-bright">{profile.brandTitle}</span>
+            <img
+              src={leagueMarkUrl()}
+              alt=""
+              width={14}
+              height={14}
+              className="hud-league-mark"
+              decoding="async"
+              draggable={false}
+            />
+            <span className="font-display tracking-[0.22em] uppercase text-chrome-bright">One Trick</span>
+            <img
+              src={championSquareUrl(profile.championId)}
+              alt=""
+              width={18}
+              height={18}
+              className="hud-champ-icon hud-champ-icon--title"
+              decoding="async"
+              draggable={false}
+            />
             <span className="hud-chip hud-accent-blood !py-0.5 !text-[8px]">{profile.shortLabel}</span>
           </div>
           <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -683,21 +700,51 @@ const App: React.FC = () => {
         </div>
       )}
       <div className={`container mx-auto p-6 max-w-7xl ${window.electronAPI ? 'pt-16' : ''}`}>
-        <header className="hud-main-header mb-8 pb-5 relative">
-          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-chrome-silver/50 to-transparent" />
-          <div className="absolute bottom-0 left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-chrome-blood/40 to-transparent translate-y-px" />
+        <header className="hud-main-header mb-8 pb-5 relative overflow-hidden">
+          {/* Profile splash — CSS opacity only, no blur / no GPU filters */}
+          <div
+            className="hud-header-splash"
+            style={{ backgroundImage: `url(${championSplashUrl(profile.championId)})` }}
+            aria-hidden
+          />
+          <div className="hud-header-splash-fade" aria-hidden />
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-chrome-silver/50 to-transparent z-[1]" />
+          <div className="absolute bottom-0 left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-chrome-blood/40 to-transparent translate-y-px z-[1]" />
 
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
+          <div className="relative z-[1] flex flex-wrap items-end justify-between gap-4 mb-4">
             <div className="flex items-center gap-4 min-w-0">
-              <ChromeMark className="shrink-0" size={28} style={{ color: chromeColor }} />
+              <div className="hud-profile-portrait shrink-0">
+                <img
+                  src={championSquareUrl(profile.championId)}
+                  alt={profile.shortLabel}
+                  width={56}
+                  height={56}
+                  decoding="async"
+                  draggable={false}
+                />
+              </div>
               <div className="min-w-0">
-                <h1 className="hud-brand text-3xl md:text-5xl truncate">{profile.brandTitle}</h1>
+                <div className="flex items-center gap-2 mb-1">
+                  <img
+                    src={leagueMarkUrl()}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="hud-league-mark opacity-80"
+                    decoding="async"
+                    draggable={false}
+                  />
+                  <span className="font-mono text-[9px] tracking-[0.3em] uppercase text-chrome-dim">
+                    League companion
+                  </span>
+                </div>
+                <h1 className="hud-brand text-3xl md:text-5xl truncate">One Trick</h1>
                 <p className="mt-1 font-mono text-[10px] tracking-[0.28em] uppercase text-chrome-dim">
-                  {profile.label} · tactical loadout
+                  {profile.label} · one-trick loadout
                 </p>
               </div>
               <span className="hud-chip text-chrome-dim hidden sm:inline-flex" style={{ ['--accent' as string]: '#8a919c' }}>
-                V1.4.0
+                β5
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -707,13 +754,22 @@ const App: React.FC = () => {
                     key={p.id}
                     type="button"
                     onClick={() => handleProfileChange(p.id)}
-                    className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                    className={`hud-profile-tab px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors inline-flex items-center gap-1.5 ${
                       profileId === p.id
                         ? 'bg-chrome-silver/20 text-chrome-bright'
                         : 'text-chrome-dim hover:text-chrome-bright hover:bg-white/5'
                     }`}
                     title={`Switch to ${p.label}`}
                   >
+                    <img
+                      src={championSquareUrl(p.championId)}
+                      alt=""
+                      width={18}
+                      height={18}
+                      className="hud-champ-icon"
+                      decoding="async"
+                      draggable={false}
+                    />
                     {p.shortLabel}
                   </button>
                 ))}
@@ -906,7 +962,15 @@ const App: React.FC = () => {
             ) : (
               <HudFrame accent="steel" label="Standby" className="hud-scanlines min-h-[420px] p-12 animate-fade-in">
                 <div className="h-full flex flex-col items-center justify-center text-chrome-dim">
-                  <ChromeMark size={48} className="mb-6 opacity-30" style={{ color: chromeColor }} />
+                  <img
+                    src={championSquareUrl(profile.championId)}
+                    alt=""
+                    width={72}
+                    height={72}
+                    className="mb-6 opacity-50 hud-champ-icon hud-champ-icon--xl"
+                    decoding="async"
+                    draggable={false}
+                  />
                   <p className="hud-heading text-2xl text-chrome-dim">Awaiting Data</p>
                   <p className="text-sm mt-3 text-chrome-dim/70 font-mono border-t border-white/10 pt-3 tracking-wider">
                     Select enemies (or enter champ select) for {profile.label} analysis.
