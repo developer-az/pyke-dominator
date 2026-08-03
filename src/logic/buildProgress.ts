@@ -4,8 +4,8 @@
 
 import {
   ALL_BOOT_IDS,
-  finalizeBootId,
   nextBootStep,
+  ownsAnyCompleteBoots,
   ownsFinishedBoots,
 } from './bootChains';
 
@@ -24,11 +24,11 @@ export interface BuildProgress {
   completedCount: number;
   /** Any boots piece in inventory */
   hasBoots: boolean;
-  /** Finished Noxian / upgraded boot for the recommendation */
+  /** Recommended boot target owned (mid-tier for supports) */
   hasFinishedBoots: boolean;
 }
 
-/** Support quest chain — owning any stage counts as "have Atlas". */
+/** Support quest chain — owning any stage counts as "have Atlas". Never sell. */
 export const SUPPORT_QUEST_IDS = new Set([
   '3865', // World Atlas
   '3866', // Runic Compass
@@ -55,8 +55,9 @@ export function trackBuildProgress(
   );
 
   const hasBoots = [...ownedIds].some((id) => ALL_BOOT_IDS.has(id));
-  const bootTarget = build?.boots ? finalizeBootId(build.boots.id) : '';
-  const hasFinishedBoots = bootTarget ? ownsFinishedBoots(ownedIds, bootTarget) : false;
+  const bootDone =
+    (build?.boots ? ownsFinishedBoots(ownedIds, build.boots.id) : false) ||
+    ownsAnyCompleteBoots(ownedIds);
 
   if (!build) {
     return {
@@ -66,30 +67,30 @@ export function trackBuildProgress(
       next: null,
       completedCount: 0,
       hasBoots,
-      hasFinishedBoots,
+      hasFinishedBoots: bootDone,
     };
   }
 
   const path: BuildItemRef[] = [];
-  // Surface the next boot step (Boots → mid → upgrade) so supports see the upgrade
   const bootStep = nextBootStep(ownedIds, build.boots.id);
-  if (bootStep && !hasFinishedBoots) {
+  if (bootStep && !bootDone) {
+    const chainEnd = bootStep.id === build.boots.id;
     path.push({
       id: bootStep.id,
       name: bootStep.name,
-      reason:
-        bootStep.id === bootTarget
-          ? build.boots.reason || 'Finish boot upgrade.'
-          : `Boot path → ${build.boots.name}: buy ${bootStep.name} next.`,
+      reason: chainEnd
+        ? build.boots.reason || 'Finish boots (mid-tier is enough for support).'
+        : `Boot path → ${build.boots.name}: buy ${bootStep.name} next.`,
     });
-  } else if (build.boots && !hasFinishedBoots) {
-    path.push({ ...build.boots, id: bootTarget || build.boots.id });
+  } else if (build.boots && !bootDone) {
+    path.push({ ...build.boots });
   }
 
   for (const c of build.core) {
     if (!path.some((p) => p.id === c.id)) path.push(c);
   }
-  for (const s of build.situational) {
+  // Keep checklist short — top 2 situational only
+  for (const s of build.situational.slice(0, 2)) {
     if (!path.some((p) => p.id === s.id)) path.push(s);
   }
 
@@ -102,9 +103,9 @@ export function trackBuildProgress(
     const isBootStep = ALL_BOOT_IDS.has(item.id) || item.id === build.boots?.id;
     const owned =
       ownedIds.has(String(item.id)) ||
-      (isBootStep && hasFinishedBoots) ||
+      (isBootStep && bootDone) ||
       (item.id === '3865' && hasSupportQuest) ||
-      (item.id === '3877' && ownedIds.has('3877'));
+      (item.id === '3877' && hasSupportQuest);
     if (owned) {
       completedCount++;
       continue;
@@ -113,7 +114,15 @@ export function trackBuildProgress(
     if (!next) next = item;
   }
 
-  return { ownedIds, path, remaining, next, completedCount, hasBoots, hasFinishedBoots };
+  return {
+    ownedIds,
+    path,
+    remaining,
+    next,
+    completedCount,
+    hasBoots,
+    hasFinishedBoots: bootDone,
+  };
 }
 
 /** Name fallback for items that finished but ID drifted (rare). */

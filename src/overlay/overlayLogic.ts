@@ -37,6 +37,7 @@ export interface OverlayBotSummoner {
     baseCd: number;
     remaining: number;
     ready: boolean;
+    readyAt?: number;
     source?: string;
   }>;
 }
@@ -530,12 +531,12 @@ function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
     });
   }
 
-  // Boot upgrade / next buy — only when it is the blocking step
-  if (progress.next && !progress.hasFinishedBoots && /boot|swift|lucid|crush|armor|march|greave/i.test(progress.next.name)) {
+  // Boot buy — mid-tier is complete for supports (no Noxian upgrade nag)
+  if (progress.next && !progress.hasFinishedBoots && /boot|swift|lucid|merc|steel|greave|ionian|treads/i.test(progress.next.name)) {
     cues.push({
       id: `buy-${progress.next.id}`,
       label: `Buy ${progress.next.name}`,
-      detail: (progress.next.reason || 'Finish the boot upgrade chain.').slice(0, 100),
+      detail: (progress.next.reason || 'Finish mid-tier boots — upgrade optional.').slice(0, 100),
       urgency: 'spike',
       maxAgeSec: 40,
     });

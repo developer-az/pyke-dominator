@@ -34,6 +34,11 @@ declare global {
                 current?: boolean;
             }) => Promise<{ success: boolean; error?: string }>;
             clipboardWrite: (text: string) => Promise<{ success: boolean; error?: string }>;
+            markSummonerSpell: (
+                role: 'Bot' | 'Support' | 'Mid',
+                spellName: string,
+                opts?: { clear?: boolean }
+            ) => Promise<{ success: boolean; error?: string }>;
             onUpdate: (callback: (value: unknown) => void) => void;
             windowMinimize: () => Promise<void>;
             windowMaximize: () => Promise<void>;

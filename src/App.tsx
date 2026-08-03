@@ -871,26 +871,38 @@ const App: React.FC = () => {
 
         {/* In-match: main UI goes static — overlay owns CPU; avoid rebuild churn */}
         {overlayInGame ? (
-          <HudFrame accent="steel" label="Match Live" className="p-8 animate-fade-in">
-            <div className="flex flex-col items-center text-center gap-4 max-w-lg mx-auto">
-              <ChromeMark size={40} className="opacity-40" style={{ color: chromeColor }} />
-              <h2 className="hud-heading text-2xl text-chrome-bright">Client Idle · Overlay Active</h2>
-              <p className="text-sm text-chrome-dim font-mono tracking-wide">
-                Match is live — LCU polling and loadout recalculation are paused so League keeps the CPU.
-                Use the in-game overlay for cues and bot-lane summoner timers.
-              </p>
-              {enemyBotSummoners.length > 0 && (
-                <div className="w-full text-left mt-2">
-                  <SummonerTimers lanes={enemyBotSummoners} accentColor={chromeColor} />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+            <HudFrame accent="steel" label="Match Live" className="p-6 lg:col-span-5">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <ChromeMark size={28} className="opacity-50" style={{ color: chromeColor }} />
+                  <div>
+                    <h2 className="hud-heading text-xl text-chrome-bright">Overlay Active</h2>
+                    <p className="text-xs text-chrome-dim font-mono tracking-wide mt-1">
+                      Dual-rail HUD: sums on the left, cues / buys on the right. Mark Flash here if auto misses.
+                    </p>
+                  </div>
                 </div>
-              )}
-              {analysis && (
-                <p className="text-xs text-chrome-dim/80 border-t border-white/10 pt-3 mt-2">
-                  Last plan: <span className="text-chrome-bright">{analysis.title}</span> · {profile.label}
+                {analysis && (
+                  <p className="text-xs text-chrome-dim/80 border-t border-white/10 pt-3">
+                    Plan: <span className="text-chrome-bright">{analysis.title}</span> · {profile.label}
+                  </p>
+                )}
+                <p className="text-[10px] font-mono text-chrome-dim/70">
+                  Support item: keep Atlas → Bloodsong (never sell). Boots: mid-tier is complete.
                 </p>
+              </div>
+            </HudFrame>
+            <div className="lg:col-span-7">
+              {enemyBotSummoners.length > 0 ? (
+                <SummonerTimers lanes={enemyBotSummoners} accentColor={chromeColor} />
+              ) : (
+                <HudFrame accent="cyan" label="Sums" className="p-6">
+                  <p className="text-sm text-chrome-dim font-mono">Waiting for enemy summoner data…</p>
+                </HudFrame>
               )}
             </div>
-          </HudFrame>
+          </div>
         ) : (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 relative">
           {/* Left Panel: Enemy Selection */}

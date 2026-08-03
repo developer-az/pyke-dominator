@@ -338,9 +338,14 @@ export const BuildDisplay: React.FC<Props> = ({
                         <ChromeMark size={14} className="text-chrome-bright" /> Item Build
                     </h3>
 
+                    <p className="text-[11px] text-chrome-dim font-mono tracking-wide border border-chrome-silver/15 bg-chrome-ink/40 px-3 py-2">
+                        Keep World Atlas — it quests into Bloodsong in the same slot. Never sell your support item.
+                        Boots stop at mid-tier (Ionian / Swiftness / Mercs / Steelcaps); Noxian upgrades are optional.
+                    </p>
+
                     {/* Full Build Path */}
                     <div className="space-y-2">
-                        <label className="text-xs text-slate-500 uppercase tracking-wider">Full Build Path (Pacing)</label>
+                        <label className="text-xs text-slate-500 uppercase tracking-wider">Build Path</label>
                         <div className="flex flex-wrap gap-2 items-center bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             {build.buildPath.map((item, i) => (
                                 <React.Fragment key={i}>
@@ -361,7 +366,7 @@ export const BuildDisplay: React.FC<Props> = ({
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs text-slate-500 uppercase tracking-wider">Core Build</label>
+                        <label className="text-xs text-slate-500 uppercase tracking-wider">Core + Boots</label>
                         <div className="flex gap-2 items-center">
                             <ItemIcon item={build.boots} />
                             <div className="w-4 h-px bg-slate-700"></div>
@@ -370,7 +375,7 @@ export const BuildDisplay: React.FC<Props> = ({
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs text-slate-500 uppercase tracking-wider">Situational / Counter</label>
+                        <label className="text-xs text-slate-500 uppercase tracking-wider">Situational (pick 1–2)</label>
                         <div className="flex gap-2">
                             {build.situational.map((item, i) => <ItemIcon key={i} item={item} />)}
                         </div>

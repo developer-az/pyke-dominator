@@ -416,6 +416,20 @@ async function tick(): Promise<void> {
     }
 }
 
+/** Immediate overlay/UI refresh after a manual summoner mark. */
+export function pushSummonerUpdate(): void {
+    lastOverlayFingerprint = '';
+    if (inGame) {
+        void tick();
+        return;
+    }
+    sendOverlayUpdate({
+        inGame: false,
+        enemyBotSummoners: serializeSummoners(),
+        timestamp: Date.now(),
+    });
+}
+
 export function startGameMonitor(): void {
     if (monitorInterval) return;
 
