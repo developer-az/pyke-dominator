@@ -38,8 +38,8 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Project Pages URL: https://<user>.github.io/pyke-dominator/
-          VITE_BASE: /pyke-dominator/
+          # Project Pages URL: https://<user>.github.io/One-Trick-Client/
+          VITE_BASE: /One-Trick-Client/
 
       - uses: actions/upload-pages-artifact@v3
         with:
