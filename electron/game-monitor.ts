@@ -5,6 +5,7 @@ import {
     hideOverlay,
     sendOverlayUpdate,
     isOverlayUserHidden,
+    setOverlayUserHidden,
     createOverlayWindow,
     destroyOverlay,
     getOverlayWindow,
@@ -23,14 +24,11 @@ import {
 } from './summoner-tracker';
 import { clipboard } from 'electron';
 
-/** Gameflow phases where an active match (including Practice Tool) is running. */
-const IN_GAME_PHASES = new Set(['InProgress', 'GameStart']);
+/** True terminal phases — only these end a match immediately. */
+const MATCH_OVER_PHASES = new Set(['WaitingForStats', 'PreEndOfGame', 'EndOfGame']);
 
-/** Phases that mean the match is over or we are out of a live game — live client may still respond briefly. */
-const POST_GAME_PHASES = new Set([
-    'WaitingForStats',
-    'PreEndOfGame',
-    'EndOfGame',
+/** Soft lobby phases — only end the match if live client is also gone (strike buffer). */
+const LOBBY_PHASES = new Set([
     'Lobby',
     'ChampSelect',
     'ReadyCheck',
@@ -38,16 +36,21 @@ const POST_GAME_PHASES = new Set([
     'None',
 ]);
 
+/** Gameflow phases where an active match (including Practice Tool) is running. */
+const IN_GAME_PHASES = new Set(['InProgress', 'GameStart']);
+
 /** Quiet lobby / menu — rare phase checks only. */
 const POLL_IDLE_MS = 5000;
 /** Champ select needs faster enemy/summoner ingest. */
 const POLL_CHAMPSELECT_MS = 2000;
 /** In-game: overlay owns the hot path; slower ticks = less CPU vs League. */
-const POLL_INGAME_MS = 4000;
+const POLL_INGAME_MS = 3500;
 /** In-game with the overlay hidden: nothing is rendered, so just track match state. */
 const POLL_INGAME_HIDDEN_MS = 12000;
 /** Clipboard is a synchronous OS call — never more than once per this window. */
 const CLIPBOARD_MIN_INTERVAL_MS = 20000;
+/** Soft end requires this many consecutive failed ticks (~14s at 3.5s poll). */
+const END_GAME_STRIKES_NEEDED = 4;
 
 let lastClipboardWrite = 0;
 
@@ -67,6 +70,8 @@ let lastLcuConnectAttempt = 0;
 let lastOverlayFingerprint = '';
 let currentPollMs = POLL_IDLE_MS;
 let onGameStateChange: ((active: boolean) => void) | null = null;
+/** Optional hook so main can re-bind PageUp/PageDown when a match starts. */
+let onMatchStartHotkeys: (() => void) | null = null;
 
 export function getLastChampSelectEnemies(): CachedEnemy[] {
     return lastChampSelectEnemies;
@@ -79,6 +84,10 @@ export function isCurrentlyInGame(): boolean {
 /** Optional hook so main window can minimize / pause work while League is running. */
 export function setGameStateChangeHandler(handler: ((active: boolean) => void) | null): void {
     onGameStateChange = handler;
+}
+
+export function setMatchStartHotkeyHandler(handler: (() => void) | null): void {
+    onMatchStartHotkeys = handler;
 }
 
 /** Attempt (re)connect, respecting a 5s backoff. Only called after a request already failed. */
@@ -323,7 +332,8 @@ async function tick(): Promise<void> {
         }
 
         const phaseInGame = phase ? IN_GAME_PHASES.has(phase) : false;
-        const phaseIsPostGame = phase ? POST_GAME_PHASES.has(phase) : false;
+        const phaseMatchOver = phase ? MATCH_OVER_PHASES.has(phase) : false;
+        const phaseLobby = phase ? LOBBY_PHASES.has(phase) : false;
         const phaseChampSelect = phase === 'ChampSelect' || phase === 'ReadyCheck';
 
         // Champ-select ingest only — skip LCU session reads while sitting in lobby/menus
@@ -335,22 +345,25 @@ async function tick(): Promise<void> {
         }
 
         // Live client is the in-game hot path. Skip the HTTPS hit entirely when we
-        // already know we are in a post-game / lobby phase (saves sockets + CPU),
+        // already know we are in a terminal post-game phase (saves sockets + CPU),
         // and when the overlay is hidden there is nothing to feed — only the
         // gameflow phase matters for knowing the match ended.
         const overlayHidden = isOverlayUserHidden();
         let live: LiveClientAllGameData | null = null;
         if ((phaseInGame || phase === null || inGame) && !(overlayHidden && phaseInGame)) {
-            if (!phaseIsPostGame || inGame) {
+            if (!phaseMatchOver || inGame) {
                 live = await fetchLiveClientData();
             }
         }
         const liveAvailable = live !== null;
 
-        // Prefer gameflow when known: EndOfGame / Lobby / ChampSelect must exit even if
-        // live client still serves stale /allgamedata for a while.
+        // Prefer gameflow when known for true end-of-game. Lobby/ChampSelect mid-match
+        // must NOT instantly kill the overlay — those blips happen when LCU flaps.
         // If LCU phase is unknown (null) but live client is up (Practice Tool), trust live.
-        const shouldShow = phaseInGame || (liveAvailable && !phaseIsPostGame && phase === null);
+        const shouldShow =
+            phaseInGame ||
+            (liveAvailable && !phaseMatchOver && phase === null) ||
+            (inGame && liveAvailable && !phaseMatchOver);
 
         if (shouldShow) {
             const wasInGame = inGame;
@@ -363,10 +376,17 @@ async function tick(): Promise<void> {
             setPollCadence(overlayHidden ? POLL_INGAME_HIDDEN_MS : POLL_INGAME_MS);
 
             if (!wasInGame) {
+                // New match — never stay hidden from a previous manual hide
+                setOverlayUserHidden(false);
                 syncScalesFromLeague();
-                if (!overlayHidden) {
-                    createOverlayWindow();
-                    showOverlay();
+                createOverlayWindow();
+                showOverlay();
+                // Re-bind Flash hotkeys so PageUp/PageDown stay alive after League focus
+                try {
+                    // Dynamically imported via callback set from main
+                    onMatchStartHotkeys?.();
+                } catch {
+                    // ignore
                 }
                 onGameStateChange?.(true);
             } else if (!overlayHidden) {
@@ -393,13 +413,20 @@ async function tick(): Promise<void> {
                 }
             }
         } else if (inGame) {
-            // Confirmed post-game ends immediately; otherwise require 3 missed ticks
-            // (~12s) so a null phase / live-client hiccup cannot delete the overlay.
-            if (phaseIsPostGame) {
+            // True end-of-game: end immediately.
+            // Lobby/ChampSelect/null: only end if live client is also dead for N strikes.
+            if (phaseMatchOver) {
                 endGameSession();
+            } else if (phaseLobby || phase === null) {
+                if (!liveAvailable) {
+                    endGameStrikes += 1;
+                    if (endGameStrikes >= END_GAME_STRIKES_NEEDED) endGameSession();
+                } else {
+                    endGameStrikes = 0;
+                }
             } else {
                 endGameStrikes += 1;
-                if (endGameStrikes >= 3) endGameSession();
+                if (endGameStrikes >= END_GAME_STRIKES_NEEDED) endGameSession();
             }
         } else if (!inGame) {
             // Pregame: push bot summoner intel to main UI occasionally (no overlay window)

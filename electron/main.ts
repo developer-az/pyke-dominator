@@ -7,6 +7,7 @@ import {
     stopGameMonitor,
     isCurrentlyInGame,
     setGameStateChangeHandler,
+    setMatchStartHotkeyHandler,
     pushSummonerUpdate,
 } from './game-monitor';
 import {
@@ -37,8 +38,10 @@ import {
     formatAdcClipboard,
     markSpellUsed,
     toggleSpellUsed,
+    getSummonerFocus,
     type TrackedRole,
 } from './summoner-tracker';
+import { startFlashKeyHook, stopFlashKeyHook, isFlashKeyHookActive } from './global-key-hook';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public');
@@ -76,6 +79,7 @@ function createWindow() {
         win = null;
         stopGameMonitor();
         destroyOverlay();
+        stopFlashKeyHook();
         globalShortcut.unregisterAll();
         if (process.platform !== 'darwin') {
             app.quit();
@@ -102,8 +106,91 @@ function createWindow() {
     void loadMain();
 }
 
+function flashToggleRoles(): { primary: TrackedRole; secondary: TrackedRole } {
+    // Yone mid: PageUp = Mid Flash, PageDown = Mid second combat sum (Ignite preferred)
+    if (getSummonerFocus() === 'mid') {
+        return { primary: 'Mid', secondary: 'Mid' };
+    }
+    return { primary: 'Bot', secondary: 'Support' };
+}
+
+function onFlashPrimary(): void {
+    const { primary } = flashToggleRoles();
+    const res = toggleSpellUsed(primary, 'Flash');
+    if (res.success) pushSummonerUpdate();
+}
+
+function onFlashSecondary(): void {
+    const { secondary } = flashToggleRoles();
+    if (getSummonerFocus() === 'mid') {
+        // Mid: PageDown toggles Ignite, then Teleport as fallback
+        let res = toggleSpellUsed(secondary, 'Ignite');
+        if (!res.success) res = toggleSpellUsed(secondary, 'Teleport');
+        if (!res.success) res = toggleSpellUsed(secondary, 'Flash');
+        if (res.success) pushSummonerUpdate();
+        return;
+    }
+    const res = toggleSpellUsed(secondary, 'Flash');
+    if (res.success) pushSummonerUpdate();
+}
+
+/**
+ * PageUp / PageDown (and Numpad 9/3) must work while League has focus.
+ * Electron `globalShortcut` (RegisterHotKey) often never fires in that case —
+ * use uiohook-napi WH_KEYBOARD_LL instead. Keep globalShortcut only as a
+ * degraded fallback if the native hook fails to load.
+ *
+ * Elevation: if League is Run as Administrator and One Trick is not, Windows
+ * UIPI blocks the hook from seeing those keydowns — run One Trick elevated too.
+ */
+function registerFlashHotkeys(): void {
+    // Drop any prior RegisterHotKey binds for these keys (avoid double-fire if
+    // both paths somehow lived together from an older session).
+    for (const key of ['PageUp', 'PageDown', 'num9', 'num3', 'Prior', 'Next'] as const) {
+        try {
+            if (globalShortcut.isRegistered(key)) globalShortcut.unregister(key);
+        } catch {
+            // ignore
+        }
+    }
+
+    const hookOk = startFlashKeyHook({
+        onPrimary: onFlashPrimary,
+        onSecondary: onFlashSecondary,
+    });
+
+    if (hookOk && isFlashKeyHookActive()) {
+        return;
+    }
+
+    // Fallback — usually insufficient while League is focused
+    const upOk = globalShortcut.register('PageUp', onFlashPrimary);
+    const downOk = globalShortcut.register('PageDown', onFlashSecondary);
+    try {
+        if (!globalShortcut.isRegistered('Prior')) globalShortcut.register('Prior', onFlashPrimary);
+        if (!globalShortcut.isRegistered('Next')) globalShortcut.register('Next', onFlashSecondary);
+    } catch {
+        // ignore
+    }
+    globalShortcut.register('num9', onFlashPrimary);
+    globalShortcut.register('num3', onFlashSecondary);
+
+    if (!upOk || !downOk) {
+        console.warn(
+            '[overlay] Flash hotkeys fallback incomplete. Prefer fixing uiohook-napi load, ' +
+                'or run One Trick as admin if League is elevated.'
+        );
+    } else {
+        console.warn(
+            '[overlay] Using Electron globalShortcut fallback for PageUp/PageDown — ' +
+                'these often fail while League has focus. Check that uiohook-napi loaded.'
+        );
+    }
+}
+
 function registerOverlayHotkeys() {
     // Avoid Ctrl+Shift+I — Electron/Chromium reserves it for DevTools
+    // Ctrl+Shift combos still use globalShortcut (rarely conflict with League).
     const hideOk = globalShortcut.register('CommandOrControl+Shift+H', () => {
         const visible = toggleOverlayVisibility();
         win?.webContents.send('overlay-visibility-changed', { visible });
@@ -117,17 +204,7 @@ function registerOverlayHotkeys() {
         broadcastOverlayMeta();
     });
 
-    // Flash toggles — work even while League has focus (global).
-    // PageUp = enemy ADC Flash; PageDown = enemy Support Flash.
-    // Second press clears the timer (undo accidental mark).
-    const adcFlashOk = globalShortcut.register('PageUp', () => {
-        const res = toggleSpellUsed('Bot', 'Flash');
-        if (res.success) pushSummonerUpdate();
-    });
-    const suppFlashOk = globalShortcut.register('PageDown', () => {
-        const res = toggleSpellUsed('Support', 'Flash');
-        if (res.success) pushSummonerUpdate();
-    });
+    registerFlashHotkeys();
 
     if (!hideOk || !globalShortcut.isRegistered('CommandOrControl+Shift+H')) {
         console.warn('[overlay] Failed to register Ctrl+Shift+H (hide); another app may own it.');
@@ -135,17 +212,12 @@ function registerOverlayHotkeys() {
     if (!clickOk || !globalShortcut.isRegistered('CommandOrControl+Shift+U')) {
         console.warn('[overlay] Failed to register Ctrl+Shift+U (lock/unlock); another app may own it.');
     }
-    if (!adcFlashOk || !globalShortcut.isRegistered('PageUp')) {
-        console.warn('[overlay] Failed to register PageUp (ADC Flash toggle).');
-    }
-    if (!suppFlashOk || !globalShortcut.isRegistered('PageDown')) {
-        console.warn('[overlay] Failed to register PageDown (Support Flash toggle).');
-    }
 }
 
 app.on('window-all-closed', () => {
     stopGameMonitor();
     destroyOverlay();
+    stopFlashKeyHook();
     globalShortcut.unregisterAll();
     if (process.platform !== 'darwin') {
         app.quit();
@@ -161,6 +233,7 @@ app.on('activate', () => {
 
 app.on('will-quit', () => {
     stopGameMonitor();
+    stopFlashKeyHook();
     globalShortcut.unregisterAll();
 });
 
@@ -169,6 +242,10 @@ app.whenReady().then(() => {
     // Overlay is created only when a match starts (see game-monitor) —
     // avoid a permanent fullscreen transparent window sitting idle.
     registerOverlayHotkeys();
+    // Re-bind Flash keys every match start (Windows can drop hotkeys after focus fights)
+    setMatchStartHotkeyHandler(() => {
+        registerFlashHotkeys();
+    });
 
     // Minimize the main window during matches so its renderer/GPU work
     // does not steal frames from League. Restore when the match ends.

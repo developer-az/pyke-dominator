@@ -67,22 +67,27 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           draft: false
-          # First public line is beta — keep GitHub "Pre-release" checked for *-beta* tags
+          # Only *-beta* tags are marked Pre-release; v1.0.0 is a full release
           prerelease: ${{ contains(github.ref_name, 'beta') }}
           name: One Trick ${{ github.ref_name }}
           body: |
-            **One Trick ${{ github.ref_name }}** — public beta for real client testing.
+            **One Trick ${{ github.ref_name }}** — production release.
 
-            ### Try it
-            - Install the Windows `.exe` from Assets below
+            ### Install
+            - Download the Windows `.exe` from Assets below
             - Use **Borderless** display mode in League
-            - Connect with the League client open, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) → **Align HUD**
-            - **PageUp** = toggle enemy ADC Flash · **PageDown** = toggle enemy Support Flash (press again to reset)
+            - Open the League client, connect in One Trick, hit **Sync LoL**, then unlock the overlay (Ctrl+Shift+U) → **Align HUD**
 
-            ### Highlights (beta.5)
-            - Rebranded to **One Trick** (rune page name: `One Trick`)
-            - Champion portraits + splash atmosphere (Data Dragon CDN — no FPS cost)
-            - Yone Mid tracks enemy mid sums; patch-accurate items/runes; Pantheon Support
+            ### In-game
+            - **PageUp** / **Numpad 9** — toggle primary Flash (ADC or Mid)
+            - **PageDown** / **Numpad 3** — Support Flash, or Mid Ignite/TP
+            - Works while League has focus (low-level keyboard hook). If League is Run as Administrator, run One Trick elevated too.
+            - Ctrl+Shift+U unlock/lock · Ctrl+Shift+H hide
 
-            Feedback welcome — expect rough edges. Beta line started at `1.0.0-beta.1`.
+            ### Highlights
+            - Stable overlay persistence mid-match
+            - Reliable summoner timers + role-aware hotkeys
+            - Core-first item checklist (boots after first spike)
+            - Pro loading doctrine + rotating tips (Pyke / Yone / Pantheon)
+            - Purpose-first ward UI + gank probability square
           generateReleaseNotes: true

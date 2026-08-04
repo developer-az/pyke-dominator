@@ -588,6 +588,11 @@ export interface MatchupAnalysis {
     roamAdvice?: string;
     /** Bait ability + priority target line for the overlay. */
     preyFocus?: string;
+    /**
+     * Loading / first-90s doctrine — exact macro lines so the user can close
+     * the companion and still play the matchup correctly.
+     */
+    loadingDoctrine?: string[];
 }
 
 export interface BotLaneMatchup {
@@ -1098,6 +1103,21 @@ export const analyzeMatchup = (
     if (analysis.roamAdvice) {
         analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 8);
     }
+
+    // Loading-screen / first-90s doctrine — exact plays, no basics
+    const adcName = botLaneMatchup?.enemyADC?.name || 'ADC';
+    const suppName = botLaneMatchup?.enemySupport?.name || 'Support';
+    analysis.loadingDoctrine = [
+        analysis.title,
+        `Vs ${adcName}+${suppName}: ${analysis.description.slice(0, 120)}`,
+        analysis.aggressionLevel === 'EXTREME' || analysis.aggressionLevel === 'HIGH'
+            ? 'Lv1–2: look for spent-spell punish → crash → leave. Do not sit in their pattern.'
+            : 'Lv1–2: thin Q, crash, convert mid/river. Extended 2v2 is their plan — deny it.',
+        analysis.roamAdvice
+            ? analysis.roamAdvice.slice(0, 140)
+            : 'Post-6: R up + crashed wave = mid roam, not a slow push leave.',
+        focus ? `Prey: ${focus.line}` : `Win con: ${analysis.winCondition.slice(0, 100)}`,
+    ].slice(0, 5);
 
     return analysis;
 };

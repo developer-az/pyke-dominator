@@ -1,5 +1,7 @@
 /**
  * Track recommended-build purchase progress by item ID (not fuzzy names).
+ * Order mirrors real support pacing: core rush → boots → 2nd core → situational.
+ * Boots are NOT forced to the front of the checklist.
  */
 
 import {
@@ -17,14 +19,12 @@ export interface BuildItemRef {
 
 export interface BuildProgress {
   ownedIds: Set<string>;
-  /** Ordered path: boots chain step + core + situational */
+  /** Ordered path: core → boots → core2 → situational */
   path: BuildItemRef[];
   remaining: BuildItemRef[];
   next: BuildItemRef | null;
   completedCount: number;
-  /** Any boots piece in inventory */
   hasBoots: boolean;
-  /** Recommended boot target owned (mid-tier for supports) */
   hasFinishedBoots: boolean;
 }
 
@@ -72,27 +72,48 @@ export function trackBuildProgress(
   }
 
   const path: BuildItemRef[] = [];
+  const pushUnique = (item: BuildItemRef) => {
+    if (!path.some((p) => p.id === item.id)) path.push(item);
+  };
+
+  // 1) First core (Umbral / first legendary) — real first spike, before boots
+  if (build.core[0]) pushUnique(build.core[0]);
+
+  // 2) Boots mid-tier step (only after first core is owned, or if somehow already done)
+  const firstCoreOwned =
+    !build.core[0] ||
+    ownedIds.has(String(build.core[0].id)) ||
+    (build.core[0].id === '3865' && [...ownedIds].some((id) => SUPPORT_QUEST_IDS.has(id)));
+
   const bootStep = nextBootStep(ownedIds, build.boots.id);
-  if (bootStep && !bootDone) {
+  if (bootStep && !bootDone && firstCoreOwned) {
     const chainEnd = bootStep.id === build.boots.id;
-    path.push({
+    pushUnique({
       id: bootStep.id,
       name: bootStep.name,
       reason: chainEnd
         ? build.boots.reason || 'Finish boots (mid-tier is enough for support).'
         : `Boot path → ${build.boots.name}: buy ${bootStep.name} next.`,
     });
-  } else if (build.boots && !bootDone) {
-    path.push({ ...build.boots });
+  } else if (build.boots && !bootDone && firstCoreOwned) {
+    pushUnique({ ...build.boots });
   }
 
-  for (const c of build.core) {
-    if (!path.some((p) => p.id === c.id)) path.push(c);
+  // 3) Remaining core
+  for (const c of build.core.slice(1)) pushUnique(c);
+
+  // 4) If first core not owned yet, still surface boots after it in the list
+  //    (so the full path is visible) but remaining[] will prioritize core first
+  if (!firstCoreOwned && bootStep && !bootDone) {
+    pushUnique({
+      id: bootStep.id,
+      name: bootStep.name,
+      reason: build.boots.reason || 'Boots after first spike.',
+    });
   }
-  // Keep checklist short — top 2 situational only
-  for (const s of build.situational.slice(0, 2)) {
-    if (!path.some((p) => p.id === s.id)) path.push(s);
-  }
+
+  // 5) Top situational
+  for (const s of build.situational.slice(0, 2)) pushUnique(s);
 
   const hasSupportQuest = [...ownedIds].some((id) => SUPPORT_QUEST_IDS.has(id));
 
