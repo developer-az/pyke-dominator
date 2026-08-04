@@ -116,7 +116,8 @@ export function situationFromState(state: OverlayState): ProfileSituation {
 /** Vision read for the standalone ward indicator (never in the cue stack). */
 export function getWardStatus(state: OverlayState, profileId: ProfileId): WardStatus | null {
   const gameTime = state.gameTime ?? 0;
-  const jg = assessJungleThreat(gameTime, state.enemies || []);
+  const focusLane = profileId === 'yone-mid' ? 'mid' : 'bot';
+  const jg = assessJungleThreat(gameTime, state.enemies || [], focusLane);
   const items = state.localPlayer?.items || [];
   const owned = new Set(items.map((i) => i.itemID));
   const controlWardCount = items
@@ -127,6 +128,17 @@ export function getWardStatus(state: OverlayState, profileId: ProfileId): WardSt
     hasOracle: owned.has(3364),
     controlWardCount,
   });
+}
+
+/** Gank probability square — yellow = fog risk, red = brief high window. */
+export function getGankStatus(
+  state: OverlayState,
+  profileId: ProfileId
+): import('../logic/jungleLogic').JungleThreat | null {
+  const gameTime = state.gameTime ?? 0;
+  if (gameTime <= 0) return null;
+  const focusLane = profileId === 'yone-mid' ? 'mid' : 'bot';
+  return assessJungleThreat(gameTime, state.enemies || [], focusLane);
 }
 
 /** Remaining recommended items — anything already owned by item ID is dropped. */
@@ -141,19 +153,49 @@ export function buildInGameCues(state: OverlayState, ctx: OverlayCueContext = {}
 
   const profileId = ctx.profileId || resolveProfileId(state);
   if (profileId === 'yone-mid') {
-    return finalizeCues(buildYoneCues(state, ctx), state, profileId);
+    return finalizeCues(buildYoneCues(state, ctx), state, profileId, ctx.analysis);
   }
   if (profileId === 'pantheon-support') {
-    return finalizeCues(buildPantheonCues(state, ctx), state, profileId);
+    return finalizeCues(buildPantheonCues(state, ctx), state, profileId, ctx.analysis);
   }
-  return finalizeCues(buildPykeCues(state, ctx), state, profileId);
+  return finalizeCues(buildPykeCues(state, ctx), state, profileId, ctx.analysis);
 }
 
 /** Merge shared jg/threat/cannon cues and keep the highest-urgency few. */
-function finalizeCues(base: OverlayCue[], state: OverlayState, profileId: ProfileId): OverlayCue[] {
+function finalizeCues(
+  base: OverlayCue[],
+  state: OverlayState,
+  profileId: ProfileId,
+  analysis?: MatchupAnalysis | null
+): OverlayCue[] {
   const gameTime = state.gameTime ?? 0;
-  const jg = assessJungleThreat(gameTime, state.enemies || []);
+  const minutes = gameTime / 60;
+  const focusLane = profileId === 'yone-mid' ? 'mid' : 'bot';
+  const jg = assessJungleThreat(gameTime, state.enemies || [], focusLane);
   const shared: OverlayCue[] = [];
+
+  // Loading / first ~90s — exact matchup doctrine (pro lines, no basics)
+  if (minutes < 1.6 && analysis?.loadingDoctrine?.length) {
+    shared.push({
+      id: 'matchup-doctrine',
+      label: analysis.loadingDoctrine[0] || analysis.title,
+      detail: analysis.loadingDoctrine.slice(1, 3).join(' · ').slice(0, 160),
+      urgency: 'warn',
+      maxAgeSec: 55,
+    });
+  } else if (minutes >= 1.6 && analysis?.tips?.length) {
+    // Rotate one pro tip by game-minute bucket — skip basics (tips are already advanced)
+    const tip = analysis.tips[Math.floor(minutes) % analysis.tips.length];
+    if (tip && tip.length > 24) {
+      shared.push({
+        id: `pro-tip-${Math.floor(minutes / 2)}`,
+        label: 'Pro read',
+        detail: tip.slice(0, 140),
+        urgency: 'info',
+        maxAgeSec: 40,
+      });
+    }
+  }
 
   if (jg && (jg.gankRisk === 'high' || jg.gankRisk === 'medium')) {
     shared.push({
@@ -161,6 +203,7 @@ function finalizeCues(base: OverlayCue[], state: OverlayState, profileId: Profil
       label: jg.label,
       detail: jg.detail,
       urgency: jg.gankRisk === 'high' ? 'spike' : 'warn',
+      maxAgeSec: jg.gankRisk === 'high' ? 18 : 28,
     });
   }
 
@@ -204,8 +247,8 @@ function finalizeCues(base: OverlayCue[], state: OverlayState, profileId: Profil
       return true;
     })
     .sort((a, b) => priority[a.urgency] - priority[b.urgency])
-    // Keep the panel tiny — only the two most important lines
-    .slice(0, 2)
+    // Three lines max — doctrine / gank / buy without clutter
+    .slice(0, 3)
     .map((cue) => ({
       ...cue,
       // Default TTL: roam/tempo info dies fast; spikes get a bit longer
@@ -531,23 +574,29 @@ function buildPykeCues(state: OverlayState, ctx: OverlayCueContext): OverlayCue[
     });
   }
 
-  // Boot buy — mid-tier is complete for supports (no Noxian upgrade nag)
-  if (progress.next && !progress.hasFinishedBoots && /boot|swift|lucid|merc|steel|greave|ionian|treads/i.test(progress.next.name)) {
-    cues.push({
-      id: `buy-${progress.next.id}`,
-      label: `Buy ${progress.next.name}`,
-      detail: (progress.next.reason || 'Finish mid-tier boots — upgrade optional.').slice(0, 100),
-      urgency: 'spike',
-      maxAgeSec: 40,
-    });
-  } else if (progress.next && !hasUmbral) {
-    cues.push({
-      id: `buy-${progress.next.id}`,
-      label: `Next: ${progress.next.name}`,
-      detail: (progress.next.reason || 'Stay on spike path.').slice(0, 100),
-      urgency: 'warn',
-      maxAgeSec: 35,
-    });
+  // Buy cue follows progress.next (core first, then boots) — never spike boots
+  // before first core because trackBuildProgress keeps core ahead of boots.
+  if (progress.next) {
+    const nextIsBoot =
+      !progress.hasFinishedBoots &&
+      /boot|swift|lucid|merc|steel|greave|ionian|treads/i.test(progress.next.name);
+    if (nextIsBoot) {
+      cues.push({
+        id: `buy-${progress.next.id}`,
+        label: `Buy ${progress.next.name}`,
+        detail: (progress.next.reason || 'Finish mid-tier boots — upgrade optional.').slice(0, 100),
+        urgency: 'spike',
+        maxAgeSec: 40,
+      });
+    } else if (!hasUmbral || progress.next.id !== '3179') {
+      cues.push({
+        id: `buy-${progress.next.id}`,
+        label: `Next: ${progress.next.name}`,
+        detail: (progress.next.reason || 'Stay on spike path.').slice(0, 100),
+        urgency: 'warn',
+        maxAgeSec: 35,
+      });
+    }
   }
 
   const flashDown = (state.enemyBotSummoners || []).flatMap((l) =>

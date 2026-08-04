@@ -8,6 +8,7 @@ import { getProfile, isProfileId, loadStoredProfileId, type ProfileId } from '..
 import {
   buildInGameCues,
   formatGameTime,
+  getGankStatus,
   getWardStatus,
   remainingBuildItems,
   resolveAllyAdcName,
@@ -21,6 +22,7 @@ import { SummonerTimers } from '../components/SummonerTimers';
 import { ChromeMark } from './ChromeMark';
 import { ChromeGameHud } from './ChromeGameHud';
 import { WardIndicator } from './WardIndicator';
+import { GankSquare } from './GankSquare';
 import { championSquareUrl } from '../data/ddragonAssets';
 
 function damageTypeFromTags(tags: string[]): Champion['damageType'] {
@@ -283,9 +285,15 @@ export const OverlayApp: React.FC = () => {
   }, [rawCues, nowTick]);
 
   const wardStatus = useMemo(() => getWardStatus(state, profileId), [state, profileId]);
+  const gankStatus = useMemo(() => getGankStatus(state, profileId), [state, profileId]);
 
   // Items still to buy — anything already in the inventory (by item ID) drops off.
   const itemsLeft = useMemo(() => remainingBuildItems(state, build).slice(0, 3), [state, build]);
+
+  const hotkeyHint =
+    profileId === 'yone-mid'
+      ? 'PgUp/Num9 Mid Flash · PgDn/Num3 Ignite/TP'
+      : 'PgUp/Num9 ADC Flash · PgDn/Num3 Supp Flash';
 
   const handleHide = () => {
     void window.electronAPI?.toggleOverlay?.().catch((error) => {
@@ -426,7 +434,7 @@ export const OverlayApp: React.FC = () => {
                   </p>
                 )}
                 <p className="text-[8px] font-mono text-chrome-dim/60 tracking-wide pt-0.5">
-                  PageUp ADC Flash · PageDown Supp Flash · toggle
+                  {hotkeyHint}
                 </p>
               </div>
             </div>
@@ -466,6 +474,7 @@ export const OverlayApp: React.FC = () => {
                     Switch profile → {state.localPlayer?.championName || '?'}
                   </div>
                 ) : null}
+                <GankSquare threat={gankStatus} compact />
                 <WardIndicator status={wardStatus} compact />
                 {cues.map((cue) => (
                   <div
@@ -577,6 +586,7 @@ export const OverlayApp: React.FC = () => {
                   Switch profile → {state.localPlayer?.championName || '?'}
                 </div>
               ) : null}
+              <GankSquare threat={gankStatus} compact />
               <WardIndicator status={wardStatus} compact />
               {cues.slice(0, 3).map((cue) => (
                 <div

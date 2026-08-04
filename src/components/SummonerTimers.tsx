@@ -156,7 +156,7 @@ export const SummonerTimers: React.FC<Props> = ({ lanes, accentColor, compact })
         </button>
         {!compact && (
           <p className="text-[9px] font-mono text-chrome-dim/70 tracking-wide">
-            PageUp ADC Flash · PageDown Support Flash (toggle) · click chip to toggle · Flash auto on first death only
+            PgUp/Num9 ADC Flash · PgDn/Num3 Support Flash · click chip to toggle · Flash auto on first death only
           </p>
         )}
       </div>

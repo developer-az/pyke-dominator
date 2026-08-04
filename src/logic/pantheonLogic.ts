@@ -570,6 +570,21 @@ export function analyzePantheonMatchup(
   }
 
   analysis.tips = analysis.tips.slice(0, 8);
+
+  const adcName = botLaneMatchup?.enemyADC?.name || 'ADC';
+  const suppName = botLaneMatchup?.enemySupport?.name || 'Support';
+  analysis.loadingDoctrine = [
+    analysis.title,
+    `Vs ${adcName}+${suppName}: ${analysis.description.slice(0, 120)}`,
+    analysis.aggressionLevel === 'EXTREME' || analysis.aggressionLevel === 'HIGH'
+      ? 'Lv1–2: Q poke → Q+W the second you hit 2. Crash, then leave — do not sit in their pattern.'
+      : 'Lv1–2: thin Q from fog, crash, convert mid/river. Extended 2v2 is their plan.',
+    (analysis.roamAdvice || 'Post-6: R the fight that is already happening, not a cold engage.').slice(0, 140),
+    analysis.preyFocus
+      ? `Prey: ${analysis.preyFocus}`
+      : `Win con: ${analysis.winCondition.slice(0, 100)}`,
+  ].slice(0, 5);
+
   return analysis;
 }
 

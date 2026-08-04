@@ -1,7 +1,7 @@
 /**
- * Support vision plan: where to ward, when to buy Control Wards / Oracle Lens.
- * Timing uses clean ceil countdown (not float % quirks) and real buy schedules —
- * not a fake "trinket CD" that drifts from the client's personal cooldown.
+ * Support vision plan: purpose-driven wards + buy schedule.
+ * Early game: potions first — no Control Ward until first real back (~2:30+).
+ * With sweeper / pink in inventory: name the exact job (deny gank path, pit, sweep).
  */
 
 import type { ProfileId } from './profiles';
@@ -19,40 +19,33 @@ export interface WardCue {
 const REWARD_CYCLE = 90;
 
 export interface WardStatus {
-  /** Where to place the next ward — one short line. */
+  /** Purpose — what this ward is for (not a vague place name alone). */
   where: string;
   /** Why / how — kept short for the chip. */
   why: string;
   urgency: WardCue['urgency'];
-  /**
-   * Seconds until the next re-ward reminder in the current cycle.
-   * Always an integer (ceil) — never a float flash.
-   */
   refreshInSec: number;
   wardScore?: number;
   due: boolean;
-  /** Buy / swap chip: "pink ×1" | "SWEEP swap" | "hold pink" */
   buyHint: string;
-  /** Longer control-ward plan for tooltips. */
   controlPlan: string;
+  /** Pinks currently held (from inventory). */
+  pinksHeld: number;
+  /** Sweep targets when Oracle is equipped. */
+  sweepTargets?: string[];
 }
 
 export interface VisionBuyPlan {
-  /** Control wards to purchase on this back (0–2). */
   controlWardsToBuy: number;
-  /** How many pinks you should have used / bought by this minute (guide total). */
   controlWardsExpectedByNow: number;
-  /** Keep this many in inventory after the buy. */
   holdInInventory: number;
-  /** Recommended trinket right now. */
   trinket: 'stealth' | 'oracle' | 'farsight';
-  /** Short shop line for item-set / overlay. */
   shopLine: string;
 }
 
 /**
  * Optimal Control Ward cadence for engage supports (Pyke / Pantheon).
- * Goal: never walk without a pink after first back; spike buys before objectives.
+ * Before first back: 0 pinks — user needs pots + Atlas, not a pink on the open.
  */
 export function visionBuyPlan(
   gameTime: number,
@@ -65,7 +58,17 @@ export function visionBuyPlan(
   const hasUmbral = !!opts?.hasUmbral;
   const support = profileId !== 'yone-mid';
 
-  // Expected cumulative pink purchases by this point (guide, not hard rule)
+  // No pink recommendation until first-back window — potions matter more
+  if (minutes < 2.4) {
+    return {
+      controlWardsToBuy: 0,
+      controlWardsExpectedByNow: 0,
+      holdInInventory: 0,
+      trinket: 'stealth',
+      shopLine: support ? 'Pots first — pink on first back' : 'Trinket river',
+    };
+  }
+
   let expected = 0;
   if (minutes >= 2.5) expected = 1;
   if (minutes >= 5) expected = 2;
@@ -78,9 +81,7 @@ export function visionBuyPlan(
   if (minutes >= 12) hold = support ? 2 : 1;
   if (minutes >= 20) hold = 1;
 
-  // Buy enough on this back to refill inventory to `hold`
   let toBuy = Math.max(0, hold - held);
-  // Objective spikes: force a pink buy even if somehow holding
   if (support && minutes >= 4.5 && minutes <= 5.5 && held < 1) toBuy = Math.max(toBuy, 1);
   if (support && minutes >= 13 && minutes <= 15.5 && held < 2) toBuy = Math.max(toBuy, 2 - held);
 
@@ -90,7 +91,6 @@ export function visionBuyPlan(
   } else if (hasOracle) {
     trinket = 'oracle';
   } else if (hasUmbral || minutes >= 8.5) {
-    // Classic support: Oracle once first legendary / ~9 min — clear before fights
     trinket = 'oracle';
   }
 
@@ -113,12 +113,12 @@ function rewardCountdown(gameTime: number): { refreshInSec: number; due: boolean
   if (gameTime <= 0) return { refreshInSec: REWARD_CYCLE, due: false, cycleIndex: 0 };
   const cycleIndex = Math.floor(gameTime / REWARD_CYCLE);
   const elapsed = gameTime - cycleIndex * REWARD_CYCLE;
-  // ceil avoids 0↔1 float flicker from Live Client fractional seconds
   const refreshInSec = Math.max(0, Math.ceil(REWARD_CYCLE - elapsed - 1e-6));
   const due = refreshInSec <= 12;
   return { refreshInSec, due, cycleIndex };
 }
 
+/** Purpose-first ward cues — each line answers "what job does this ward do?" */
 export function buildWardCues(
   gameTime: number,
   profileId: ProfileId,
@@ -129,15 +129,16 @@ export function buildWardCues(
   const cues: WardCue[] = [];
   const jgBot = jg?.sideBias === 'bot' || jg?.gankRisk === 'high';
   const { due, cycleIndex } = rewardCountdown(gameTime);
+  const jgName = jg?.junglerName || 'jg';
 
   if (profileId !== 'yone-mid') {
     if (minutes >= 1.0 && minutes <= 1.5) {
       cues.push({
         id: 'ward-open',
-        label: 'Open ward',
+        label: 'Deny invade info',
         detail: jgBot
-          ? 'Pixel brush (dragon side) — covers invade + first gank path.'
-          : 'Pixel near dragon OR river entrance by 1:25 — first info win.',
+          ? `Pixel brush — deny ${jgName} invade + first path into bot.`
+          : 'Pixel / river mouth — first info win before crab.',
         urgency: 'warn',
         refreshSec: REWARD_CYCLE,
       });
@@ -145,8 +146,8 @@ export function buildWardCues(
     if (minutes >= 2.0 && minutes <= 2.5) {
       cues.push({
         id: 'ward-scuttle',
-        label: 'Scuttle vision',
-        detail: 'River brush / pixel before 2:15 crab — track enemy jg side.',
+        label: 'Track crab start',
+        detail: `River brush before 2:15 — know which side ${jgName} took crab.`,
         urgency: jg?.gankRisk === 'high' ? 'spike' : 'warn',
         refreshSec: REWARD_CYCLE,
       });
@@ -154,10 +155,10 @@ export function buildWardCues(
     if (minutes > 2.5 && minutes < 8 && due) {
       cues.push({
         id: `ward-refresh-${cycleIndex}`,
-        label: 'Re-ward',
+        label: 'Cover gank entrance',
         detail: jgBot
-          ? 'Tri or river — jg bot. Drop a Control Ward when you crash.'
-          : 'River brush on shove; lane bush only vs hide-engage.',
+          ? `Tri or river — cover ${jgName}'s bot path while you shove.`
+          : 'River brush on crash — cover the entrance you leave through.',
         urgency: 'info',
         refreshSec: REWARD_CYCLE,
       });
@@ -165,8 +166,8 @@ export function buildWardCues(
     if (minutes >= 3.5 && minutes <= 6 && jgBot) {
       cues.push({
         id: 'ward-deep',
-        label: 'Deep track',
-        detail: `Enemy ${jg?.junglerName || 'jg'} bot — ward raptor entrance on crash leave.`,
+        label: 'Track leave path',
+        detail: `${jgName} bot — ward raptor entrance on crash leave so you see the recall/path.`,
         urgency: 'warn',
         refreshSec: REWARD_CYCLE,
       });
@@ -174,8 +175,8 @@ export function buildWardCues(
     if (minutes >= 4.0 && minutes <= 5.2) {
       cues.push({
         id: 'ward-drake1',
-        label: 'Drake setup',
-        detail: 'Pit Control Ward + river clear. Oracle soon if not swapped.',
+        label: 'Secure dragon approach',
+        detail: 'Pit pink + river clear — deny their walk-up, not random lane bush.',
         urgency: 'warn',
         refreshSec: 90,
       });
@@ -183,8 +184,8 @@ export function buildWardCues(
     if (minutes >= 8.5 && minutes <= 10) {
       cues.push({
         id: 'ward-oracle',
-        label: 'Oracle Lens',
-        detail: 'Swap Sweeper now — clear before fights / next objective.',
+        label: 'Clear fight fog',
+        detail: 'Swap Sweeper — clear river/pit wards before the next fight.',
         urgency: 'spike',
         refreshSec: 60,
       });
@@ -192,8 +193,8 @@ export function buildWardCues(
     if (minutes >= 13 && minutes <= 15.5) {
       cues.push({
         id: 'ward-drake-soul',
-        label: 'Objective wards',
-        detail: '2 Control Wards: pit + entrance. Sweep jungle before spawn.',
+        label: 'Own the objective',
+        detail: '2 pinks: pit deny + entrance cut. Sweep jungle before spawn.',
         urgency: 'spike',
         refreshSec: 90,
       });
@@ -202,9 +203,9 @@ export function buildWardCues(
     if (minutes >= 1.1 && minutes <= 1.6) {
       cues.push({
         id: 'yone-ward-open',
-        label: 'Mid open ward',
+        label: 'Know jg start',
         detail: jgBot
-          ? 'Ward bot-side river — protects you + bot from early gank.'
+          ? 'Bot-side river — protects you + bot from early path.'
           : 'One river bush by 1:25 — know which side jg started.',
         urgency: 'warn',
         refreshSec: REWARD_CYCLE,
@@ -213,7 +214,7 @@ export function buildWardCues(
     if (minutes >= 2.8 && minutes <= 4.0 && (due || jg?.gankRisk === 'high')) {
       cues.push({
         id: 'yone-ward-gank',
-        label: 'Gank ward',
+        label: 'Cover gank path',
         detail: jg
           ? `${jg.junglerName}: ward the river they path. Short E only with vision.`
           : 'River ward before trading E — no fog all-ins.',
@@ -224,8 +225,8 @@ export function buildWardCues(
     if (minutes >= 12 && minutes <= 16) {
       cues.push({
         id: 'yone-ward-obj',
-        label: 'Obj vision',
-        detail: 'Ward enemy jungle entrance before dragon — E-R flank needs fog.',
+        label: 'Enable flank fog',
+        detail: 'Enemy jungle entrance before dragon — E-R flank needs their fog denied.',
         urgency: 'warn',
         refreshSec: 90,
       });
@@ -235,8 +236,36 @@ export function buildWardCues(
   return cues;
 }
 
+function sweepTargetList(
+  minutes: number,
+  profileId: ProfileId,
+  jg: JungleThreat | null,
+  hasOracle: boolean,
+  pinksHeld: number
+): string[] {
+  if (!hasOracle && pinksHeld <= 0) return [];
+  const targets: string[] = [];
+  if (hasOracle) {
+    if (minutes < 8) {
+      targets.push(profileId === 'yone-mid' ? 'Sweep river bush before E trade' : 'Sweep pixel / river before crash leave');
+    } else if (minutes < 14) {
+      targets.push('Sweep pit + river entrance before obj walk-up');
+      if (jg?.gankRisk !== 'low') targets.push(`Clear ${jg?.junglerName || 'jg'} path brush`);
+    } else {
+      targets.push('Sweep enemy jg entrance + pit before spawn');
+      targets.push('Clear flank brush your team walks through');
+    }
+  }
+  if (pinksHeld > 0) {
+    if (minutes < 6) targets.push(`Plant pink (${pinksHeld} held): deny gank entrance on shove`);
+    else if (minutes < 14) targets.push(`Plant pink (${pinksHeld} held): pit or reset river`);
+    else targets.push(`Plant pink (${pinksHeld} held): pit deny — refill on back`);
+  }
+  return targets.slice(0, 3);
+}
+
 /**
- * Compact, single-line ward read for its own indicator — not part of the cue stack.
+ * Compact ward read — purpose first, count pinks, list sweep jobs when equipped.
  */
 export function buildWardStatus(
   gameTime: number,
@@ -252,68 +281,94 @@ export function buildWardStatus(
   const cues = buildWardCues(gameTime, profileId, jg);
   const jgBot = jg?.sideBias === 'bot' || jg?.gankRisk === 'high';
   const minutes = gameTime / 60;
+  const pinksHeld = inv?.controlWardCount ?? 0;
+  const hasOracle = !!inv?.hasOracle;
 
   let where: string;
   let why: string;
   let urgency: WardStatus['urgency'] = due ? 'warn' : 'info';
 
-  if (cues.length > 0) {
+  if (minutes < 2.4) {
+    where = 'Open info only';
+    why = 'Trinket river — buy pots, pink on first back';
+    urgency = 'info';
+  } else if (cues.length > 0) {
     const top = cues[0];
-    const [place, ...rest] = top.detail.split(/ — |\. /);
-    where = place.trim().replace(/\.$/, '');
-    why = (rest.join(' ') || top.label).trim();
+    where = top.label;
+    why = top.detail;
     urgency = top.urgency;
   } else if (profileId === 'yone-mid') {
-    where = jgBot ? 'Bot-side river bush' : 'River bush on shove side';
-    why = due ? 'Re-ward window' : 'Keep the entrance covered';
+    where = 'Cover gank path';
+    why = jgBot ? 'Bot-side river while shoving' : 'River bush on shove side';
   } else if (minutes >= 12) {
-    where = 'Objective pit + jungle entrance';
-    why = due ? 'Re-ward before spawn' : 'Deny before the fight walks up';
+    where = 'Own the objective';
+    why = due ? 'Re-ward pit + entrance before spawn' : 'Pit deny + entrance cut';
   } else {
-    where = jgBot ? 'Tri-bush / river (jg bot)' : 'River brush when you crash';
-    why = due ? 'Re-ward window' : 'Cover the entrance you play through';
+    where = jgBot ? 'Cover bot gank path' : 'Cover crash leave';
+    why = due ? 'Re-ward the entrance you play through' : 'River/tri on shove';
   }
 
+  const sweepTargets = sweepTargetList(minutes, profileId, jg, hasOracle, pinksHeld);
+
   let buyHint = plan.shopLine;
-  if (plan.trinket === 'oracle' && !inv?.hasOracle) {
+  if (minutes < 2.4) {
+    buyHint = 'Pots > pink';
+  } else if (hasOracle && sweepTargets.length) {
+    buyHint = pinksHeld > 0 ? `SWEEP · ${pinksHeld} pink` : 'SWEEP ready';
+  } else if (plan.trinket === 'oracle' && !hasOracle) {
     buyHint = plan.controlWardsToBuy > 0
       ? `SWEEP + pink ×${plan.controlWardsToBuy}`
-      : 'Swap Oracle Lens'
+      : 'Swap Oracle Lens';
   } else if (plan.controlWardsToBuy > 0) {
     buyHint = `Buy pink ×${plan.controlWardsToBuy}`;
+  } else if (pinksHeld > 0) {
+    buyHint = `${pinksHeld} pink held`;
   } else if (due) {
     buyHint = 'WARD NOW';
   } else {
     buyHint = `${refreshInSec}s`;
   }
 
-  const controlPlan = supportControlPlanText(minutes, plan);
+  const controlPlan = supportControlPlanText(minutes, plan, pinksHeld, hasOracle, sweepTargets);
 
   return {
     where,
     why,
-    urgency: due || plan.controlWardsToBuy > 0 || (plan.trinket === 'oracle' && !inv?.hasOracle)
-      ? urgency === 'info'
-        ? 'warn'
-        : urgency
-      : urgency,
+    urgency:
+      due || plan.controlWardsToBuy > 0 || (plan.trinket === 'oracle' && !hasOracle)
+        ? urgency === 'info'
+          ? 'warn'
+          : urgency
+        : urgency,
     refreshInSec,
     wardScore,
-    due: due || plan.controlWardsToBuy >= 2 || (plan.trinket === 'oracle' && !inv?.hasOracle && minutes >= 8.5 && minutes <= 10),
+    due:
+      due ||
+      plan.controlWardsToBuy >= 2 ||
+      (plan.trinket === 'oracle' && !hasOracle && minutes >= 8.5 && minutes <= 10),
     buyHint,
     controlPlan,
+    pinksHeld,
+    sweepTargets: sweepTargets.length ? sweepTargets : undefined,
   };
 }
 
-function supportControlPlanText(minutes: number, plan: VisionBuyPlan): string {
-  if (minutes < 2.5) {
-    return 'First back: buy 1 Control Ward. Keep 1 in inv after that.';
+function supportControlPlanText(
+  minutes: number,
+  plan: VisionBuyPlan,
+  pinksHeld: number,
+  hasOracle: boolean,
+  sweepTargets: string[]
+): string {
+  if (minutes < 2.4) {
+    return 'Opening: Health Potions + Atlas. Control Ward on first back — not on the open buy.';
   }
+  const sweep = hasOracle && sweepTargets.length ? ` Sweep: ${sweepTargets[0]}.` : '';
   if (minutes < 8) {
-    return `Lane phase: buy pink every back until you hold ${plan.holdInInventory}. ~${plan.controlWardsExpectedByNow} bought by now is on pace.`;
+    return `Lane: hold ${plan.holdInInventory} pink (have ${pinksHeld}). Plant to deny gank path, not random bush.${sweep}`;
   }
   if (minutes < 14) {
-    return `Oracle on + hold ${plan.holdInInventory} pinks. Expect ~${plan.controlWardsExpectedByNow} Control Wards used by mid game.`;
+    return `Oracle on + hold ${plan.holdInInventory} pinks. Pace ~${plan.controlWardsExpectedByNow} bought.${sweep}`;
   }
-  return `Objectives: place pit pink, refill to ${plan.holdInInventory} on each back. Pace ~${plan.controlWardsExpectedByNow}+ total.`;
+  return `Objectives: pit pink + entrance cut. Refill to ${plan.holdInInventory}. Pace ~${plan.controlWardsExpectedByNow}+.${sweep}`;
 }

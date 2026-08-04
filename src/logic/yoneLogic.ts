@@ -472,6 +472,18 @@ export function analyzeYoneMatchup(
   }
 
   analysis.tips = [analysis.roamAdvice, ...analysis.tips].slice(0, 8);
+
+  const midName = mid?.name || 'mid';
+  analysis.loadingDoctrine = [
+    analysis.title,
+    `Vs ${midName}: ${analysis.description.slice(0, 120)}`,
+    analysis.aggressionLevel === 'LOW'
+      ? 'Lv1–3: max-range Q, Fleet/Shield, short E only on spent spells. No ego all-ins.'
+      : 'Lv1–3: Q through minions, Q3 body knock-up trades, crash for plates/river.',
+    analysis.roamAdvice.slice(0, 140),
+    `Win con: ${analysis.winCondition.slice(0, 110)}`,
+  ].slice(0, 5);
+
   return analysis;
 }
 

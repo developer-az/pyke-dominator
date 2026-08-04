@@ -513,6 +513,91 @@ html.overlay-root body {
   letter-spacing: 0.1em;
 }
 
+.hud-ward-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.hud-ward-why {
+  font-size: 8px;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* Gank probability square — yellow = fog risk, red = brief high window */
+.hud-gank {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  border: 1px solid rgba(212, 216, 222, 0.22);
+  background: rgba(0, 0, 0, 0.28);
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+  color: #c8ccd4;
+}
+
+.hud-gank-sq {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hud-gank--red {
+  color: #f0c4c4;
+  border-color: rgba(220, 80, 80, 0.55);
+  background: rgba(60, 16, 16, 0.45);
+}
+.hud-gank--red .hud-gank-sq {
+  background: #e04545;
+  box-shadow: 0 0 6px rgba(224, 69, 69, 0.55);
+}
+
+.hud-gank--yellow {
+  color: #e8d9a8;
+  border-color: rgba(210, 170, 60, 0.5);
+  background: rgba(48, 40, 12, 0.4);
+}
+.hud-gank--yellow .hud-gank-sq {
+  background: #d4b03a;
+}
+
+.hud-gank--dim {
+  opacity: 0.72;
+}
+.hud-gank--dim .hud-gank-sq {
+  background: #5a6270;
+}
+
+.hud-gank-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-gank-meta {
+  font-size: 8px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hud-build-path-label {
   font-family: var(--font-mono);
   font-size: 8px;

@@ -233,6 +233,25 @@ export function createOverlayWindow(): BrowserWindow {
     // Default: a fullscreen click-through surface, so the game is never blocked.
     setClickThrough(true);
 
+    // No OS chrome / context menu — accidental right-clicks must not surface UI that
+    // steals focus from League or makes the overlay feel like it "closed".
+    overlayWin.setMenu(null);
+    overlayWin.webContents.on('context-menu', (e) => {
+        e.preventDefault();
+    });
+    overlayWin.on('blur', () => {
+        // Never tear down on blur — just re-assert topmost while supposed to be visible
+        if (userHidden || !overlayWin || overlayWin.isDestroyed()) return;
+        if (clickThrough && !alignMode) {
+            try {
+                assertAlwaysOnTop(overlayWin);
+                if (!overlayWin.isVisible()) overlayWin.showInactive();
+            } catch {
+                // ignore
+            }
+        }
+    });
+
     const url = getOverlayUrl();
     if (url.startsWith('http')) {
         overlayWin.loadURL(url);
@@ -257,16 +276,31 @@ export function createOverlayWindow(): BrowserWindow {
 }
 
 /**
- * Cheap periodic self-heal: Windows can occasionally drop the topmost flag
- * (e.g. another app briefly requests foreground/topmost). Only re-applies
- * setAlwaysOnTop — a native call — when the query says it's actually needed,
- * and skips entirely if the window isn't visible. Deliberately does NOT touch
- * bounds / click-through / broadcast every call like showOverlay() does.
+ * Cheap periodic self-heal: Windows can drop topmost / ignore-mouse mid-match.
+ * Re-asserts always-on-top and click-through without touching bounds/focus.
  */
 export function keepOverlayOnTop(): void {
-    if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
+    if (!overlayWin || overlayWin.isDestroyed()) return;
+    // If Windows dropped visibility mid-match without user hide, bring it back
+    if (!userHidden && !overlayWin.isVisible()) {
+        try {
+            overlayWin.showInactive();
+        } catch {
+            // ignore
+        }
+    }
+    if (!overlayWin.isVisible()) return;
     if (!overlayWin.isAlwaysOnTop()) {
         assertAlwaysOnTop(overlayWin);
+    }
+    // Re-apply click-through while locked — Windows occasionally drops ignore-mouse
+    if (clickThrough && !alignMode) {
+        try {
+            overlayWin.setFocusable(false);
+            overlayWin.setIgnoreMouseEvents(true, { forward: true });
+        } catch {
+            // ignore
+        }
     }
 }
 
@@ -362,15 +396,20 @@ export function setClickThrough(enabled: boolean): void {
         alignMode = false;
         applyFullscreenBounds();
         overlayWin.setFocusable(false);
+        // forward:true keeps League receiving clicks under the transparent regions
         overlayWin.setIgnoreMouseEvents(true, { forward: true });
+        // Never steal focus back from League when re-locking
+        if (overlayWin.isVisible()) {
+            overlayWin.showInactive();
+        }
     } else {
         // Unlocked = compact movable panel (game stays clickable around it)
         alignMode = false;
         applyCompactPanelBounds();
         overlayWin.setFocusable(true);
         overlayWin.setIgnoreMouseEvents(false);
-        overlayWin.show();
-        overlayWin.focus();
+        // showInactive — do NOT focus() or League loses input / can flicker the overlay
+        overlayWin.showInactive();
     }
     broadcastOverlayMeta();
 }

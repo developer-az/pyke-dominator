@@ -366,18 +366,26 @@ export function ingestLiveEvents(
         }
       }
 
-      if (laneMatchesChampion(lane, victimChamp)) {
+        if (laneMatchesChampion(lane, victimChamp)) {
         // High-confidence defensive sums — usually burned before death
         startSpellCd(lane, 'Heal', 'death');
         startSpellCd(lane, 'Barrier', 'death');
         startSpellCd(lane, 'Ghost', 'death');
         startSpellCd(lane, 'Cleanse', 'death');
 
-        // Flash: first death while ready only — later deaths are ~50/50
-        if (lane.flashDeathArmed !== false) {
-          const started = startSpellCd(lane, 'Flash', 'death');
-          if (started) lane.flashDeathArmed = false;
+        // Mid Teleport is often burned into a death / dive — arm if ready
+        if (lane.role === 'Mid') {
+          startSpellCd(lane, 'Teleport', 'death');
         }
+        // Support Exhaust often used into the fight that kills them
+        if (lane.role === 'Support') {
+          startSpellCd(lane, 'Exhaust', 'death');
+        }
+
+        // Flash: only if currently ready (never restarts mid-CD).
+        // Live Client has no cast events — death while Flash is up is still the
+        // best available signal; press PageUp/PageDown to correct.
+        startSpellCd(lane, 'Flash', 'death');
       }
     }
   }
@@ -415,32 +423,48 @@ export function markSpellUsed(
 
 /**
  * Toggle a spell timer: start CD if ready, clear if already counting down.
- * Used by Page Up (ADC Flash) / Page Down (Support Flash) so a mis-press is undoable.
+ * Used by Page Up / Page Down so a mis-press is undoable.
+ * Falls back across roles if the preferred lane isn't tracked yet.
  */
 export function toggleSpellUsed(
   role: TrackedRole,
   spellName: string
 ): { success: boolean; active: boolean } {
-  const lane = trackedLanes.find((l) => l.role === role);
-  if (!lane) return { success: false, active: false };
-  const spell = lane.spells.find(
-    (s) =>
-      s.name.toLowerCase() === spellName.toLowerCase() ||
-      s.short.toLowerCase() === spellName.toLowerCase()
-  );
-  if (!spell) return { success: false, active: false };
-  const now = Date.now();
-  if (spell.readyAt > now) {
-    spell.readyAt = 0;
-    spell.source = 'manual';
-    if (spell.name === 'Flash') lane.flashDeathArmed = true;
+  const tryRole = (r: TrackedRole) => {
+    const lane = trackedLanes.find((l) => l.role === r);
+    if (!lane) return null;
+    const spell = lane.spells.find(
+      (s) =>
+        s.name.toLowerCase() === spellName.toLowerCase() ||
+        s.short.toLowerCase() === spellName.toLowerCase()
+    );
+    if (!spell) return null;
+    const now = Date.now();
+    if (spell.readyAt > now) {
+      spell.readyAt = 0;
+      spell.source = 'manual';
+      if (spell.name === 'Flash') lane.flashDeathArmed = true;
+      lastFingerprint = '';
+      return { success: true as const, active: false };
+    }
+    startSpellCd(lane, spell.name, 'manual', { force: true });
+    if (spell.name === 'Flash') lane.flashDeathArmed = false;
     lastFingerprint = '';
-    return { success: true, active: false };
+    return { success: true as const, active: true };
+  };
+
+  const order: TrackedRole[] =
+    role === 'Mid'
+      ? ['Mid', 'Bot', 'Support']
+      : role === 'Bot'
+        ? ['Bot', 'Support', 'Mid']
+        : ['Support', 'Bot', 'Mid'];
+
+  for (const r of order) {
+    const res = tryRole(r);
+    if (res) return res;
   }
-  startSpellCd(lane, spell.name, 'manual', { force: true });
-  if (spell.name === 'Flash') lane.flashDeathArmed = false;
-  lastFingerprint = '';
-  return { success: true, active: true };
+  return { success: false, active: false };
 }
 
 function focusPrimaryLane(): EnemyLaneSpells | undefined {
