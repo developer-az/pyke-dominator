@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, globalShortcut, clipboard } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import { connectToLCU, makeLCURequest } from './lcu-connector';
 import { fetchLiveClientData } from './live-client';
@@ -49,13 +50,26 @@ process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirnam
 let win: BrowserWindow | null;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
+function resolveAppIcon(): string {
+    const candidates = [
+        path.join(process.env.VITE_PUBLIC || '', 'icon.ico'),
+        path.join(process.env.VITE_PUBLIC || '', 'icon.png'),
+        path.join(__dirname, '../build/icon.ico'),
+        path.join(__dirname, '../build/icon.png'),
+    ];
+    for (const candidate of candidates) {
+        if (candidate && fs.existsSync(candidate)) return candidate;
+    }
+    return path.join(process.env.VITE_PUBLIC || '', 'icon.png');
+}
+
 function createWindow() {
     win = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        minWidth: 800,
-        minHeight: 600,
-        icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
+        width: 1240,
+        height: 860,
+        minWidth: 880,
+        minHeight: 640,
+        icon: resolveAppIcon(),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -238,6 +252,9 @@ app.on('will-quit', () => {
 });
 
 app.whenReady().then(() => {
+    if (process.platform === 'win32') {
+        app.setAppUserModelId('com.onetrick.app');
+    }
     createWindow();
     // Overlay is created only when a match starts (see game-monitor) —
     // avoid a permanent fullscreen transparent window sitting idle.

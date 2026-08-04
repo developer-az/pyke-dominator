@@ -20,7 +20,6 @@ import { CHROME_COLOR_PRESETS, normalizeChromeColor } from './overlay/chromeThem
 import {
   championSquareUrl,
   championSplashUrl,
-  leagueMarkUrl,
   warmDdragonVersion,
 } from './data/ddragonAssets';
 
@@ -638,6 +637,8 @@ const App: React.FC = () => {
         ['--pyke-green' as string]: normalizeChromeColor(chromeColor),
       }}
     >
+      {/* Site-matched atmosphere — CSS only, no filters / no extra layers that cost GPU */}
+      <div className="app-atmosphere" aria-hidden />
 
       {/* Draggable Title Bar */}
       {window.electronAPI && (
@@ -645,32 +646,27 @@ const App: React.FC = () => {
           className="hud-titlebar h-10 flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-2 text-xs text-chrome-dim font-semibold">
-            <img
-              src={leagueMarkUrl()}
-              alt=""
-              width={14}
-              height={14}
-              className="hud-league-mark"
-              decoding="async"
-              draggable={false}
-            />
+          <div className="flex items-center gap-2.5 text-xs text-chrome-dim font-semibold">
+            <ChromeMark size={14} className="text-chrome-silver shrink-0" />
             <span className="font-display tracking-[0.22em] uppercase text-chrome-bright">One Trick</span>
+            <span className="text-chrome-dim/40">·</span>
             <img
               src={championSquareUrl(profile.championId)}
               alt=""
-              width={18}
-              height={18}
+              width={16}
+              height={16}
               className="hud-champ-icon hud-champ-icon--title"
               decoding="async"
               draggable={false}
             />
-            <span className="hud-chip hud-accent-blood !py-0.5 !text-[8px]">{profile.shortLabel}</span>
+            <span className="font-mono text-[9px] tracking-[0.16em] uppercase text-chrome-dim">
+              {profile.shortLabel}
+            </span>
           </div>
           <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <button
               onClick={handleMinimize}
-              className="w-10 h-10 flex items-center justify-center hover:bg-white/5 transition-all duration-150 text-chrome-dim hover:text-chrome-bright active:bg-white/10"
+              className="w-10 h-10 flex items-center justify-center hover:bg-white/5 transition-colors duration-150 text-chrome-dim hover:text-chrome-bright active:bg-white/10"
               title="Minimize"
             >
               <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -679,7 +675,7 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={handleMaximize}
-              className="w-10 h-10 flex items-center justify-center hover:bg-white/5 transition-all duration-150 text-chrome-dim hover:text-chrome-bright active:bg-white/10"
+              className="w-10 h-10 flex items-center justify-center hover:bg-white/5 transition-colors duration-150 text-chrome-dim hover:text-chrome-bright active:bg-white/10"
               title="Maximize / Restore"
             >
               <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -688,7 +684,7 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={handleClose}
-              className="w-10 h-10 flex items-center justify-center hover:bg-chrome-blood/30 transition-all duration-150 text-chrome-dim hover:text-rose-300 active:bg-chrome-blood/40"
+              className="w-10 h-10 flex items-center justify-center hover:bg-chrome-blood/30 transition-colors duration-150 text-chrome-dim hover:text-rose-300 active:bg-chrome-blood/40"
               title="Close"
             >
               <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -699,8 +695,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <div className={`container mx-auto p-6 max-w-7xl ${window.electronAPI ? 'pt-16' : ''}`}>
-        <header className="hud-main-header mb-8 pb-5 relative overflow-hidden">
+      <div className={`app-content container mx-auto px-5 sm:px-6 pb-10 max-w-7xl ${window.electronAPI ? 'pt-16' : 'pt-6'}`}>
+        <header className="hud-main-header mb-7 relative overflow-hidden">
           {/* Profile splash — CSS opacity only, no blur / no GPU filters */}
           <div
             className="hud-header-splash"
@@ -708,11 +704,12 @@ const App: React.FC = () => {
             aria-hidden
           />
           <div className="hud-header-splash-fade" aria-hidden />
-          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-chrome-silver/50 to-transparent z-[1]" />
-          <div className="absolute bottom-0 left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-chrome-blood/40 to-transparent translate-y-px z-[1]" />
 
-          <div className="relative z-[1] flex flex-wrap items-end justify-between gap-4 mb-4">
+          <div className="relative z-[1] flex flex-wrap items-end justify-between gap-5 mb-5">
             <div className="flex items-center gap-4 min-w-0">
+              <div className="hud-brand-mark shrink-0" aria-hidden>
+                <ChromeMark size={28} className="text-chrome-silver" />
+              </div>
               <div className="hud-profile-portrait shrink-0">
                 <img
                   src={championSquareUrl(profile.championId)}
@@ -724,41 +721,26 @@ const App: React.FC = () => {
                 />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <img
-                    src={leagueMarkUrl()}
-                    alt=""
-                    width={16}
-                    height={16}
-                    className="hud-league-mark opacity-80"
-                    decoding="async"
-                    draggable={false}
-                  />
-                  <span className="font-mono text-[9px] tracking-[0.3em] uppercase text-chrome-dim">
-                    League companion
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-mono text-[10px] tracking-[0.28em] uppercase text-chrome-dim">
+                    Windows · League of Legends
                   </span>
+                  <span className="hud-chip hud-chip--quiet !py-0.5 !text-[8px]">v1.0.0</span>
                 </div>
-                <h1 className="hud-brand text-3xl md:text-5xl truncate">One Trick</h1>
-                <p className="mt-1 font-mono text-[10px] tracking-[0.28em] uppercase text-chrome-dim">
-                  {profile.label} · one-trick loadout
+                <h1 className="hud-brand text-3xl md:text-5xl truncate leading-none">One Trick</h1>
+                <p className="mt-2 font-mono text-[10px] tracking-[0.22em] uppercase text-chrome-dim/90">
+                  {profile.label} · matchup doctrine · live overlay
                 </p>
               </div>
-              <span className="hud-chip text-chrome-dim hidden sm:inline-flex" style={{ ['--accent' as string]: '#8a919c' }}>
-                β6
-              </span>
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <div className="flex rounded border border-chrome-silver/30 overflow-hidden" role="group" aria-label="Champion profile">
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <div className="hud-profile-switch" role="group" aria-label="Champion profile">
                 {PROFILES.map((p) => (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => handleProfileChange(p.id)}
-                    className={`hud-profile-tab px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors inline-flex items-center gap-1.5 ${
-                      profileId === p.id
-                        ? 'bg-chrome-silver/20 text-chrome-bright'
-                        : 'text-chrome-dim hover:text-chrome-bright hover:bg-white/5'
-                    }`}
+                    className={`hud-profile-tab ${profileId === p.id ? 'is-active' : ''}`}
                     title={`Switch to ${p.label}`}
                   >
                     <img
@@ -784,19 +766,22 @@ const App: React.FC = () => {
                 }`}
               >
                 <span className={`hud-status-dot ${overlayInGame || lcuConnected ? 'text-chrome-bright' : 'text-chrome-dim'}`} />
-                {overlayInGame ? 'In Match · Idle' : lcuConnected ? 'Live' : 'Demo'}
+                {overlayInGame ? 'In Match' : lcuConnected ? 'Client Live' : 'Demo'}
               </div>
             </div>
           </div>
 
+          <div className="chrome-rule relative z-[1] mb-4" />
+
           {window.electronAPI && (
-            <div className="hud-toolbar">
+            <div className="hud-toolbar-panel relative z-[1]">
+              <div className="hud-toolbar">
               <button
                 type="button"
                 onClick={handleToggleOverlay}
                 className={`hud-btn ${
                   overlayVisible
-                    ? '!text-chrome-bright !border-chrome-silver/60 shadow-[0_0_12px_rgba(242,244,247,0.12)]'
+                    ? 'hud-btn--active'
                     : ''
                 }`}
                 title="Toggle in-game overlay (Ctrl+Shift+H)"
@@ -860,13 +845,12 @@ const App: React.FC = () => {
                   ))}
                 </span>
               </label>
+              </div>
+              <p className="hud-toolbar-hint">
+                Borderless · Sync LoL then Align ·{' '}
+                <strong>PageUp</strong> / <strong>PageDown</strong> Flash (Numpad 9/3) · Ctrl+Shift+U unlock · Ctrl+Shift+H hide
+              </p>
             </div>
-          )}
-          {window.electronAPI && (
-            <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-chrome-dim/70">
-              Tip: League in <strong className="text-chrome-dim">Borderless</strong> · <strong className="text-chrome-dim">Sync LoL</strong> then Align HUD ·{' '}
-              <strong className="text-chrome-dim">PageUp</strong> / <strong className="text-chrome-dim">PageDown</strong> Flash toggles (Numpad 9/3) · Ctrl+Shift+U unlock · Ctrl+Shift+H hide
-            </p>
           )}
         </header>
 
@@ -876,7 +860,7 @@ const App: React.FC = () => {
             <HudFrame accent="steel" label="Match Live" className="p-6 lg:col-span-5">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
-                  <ChromeMark size={28} className="opacity-50" style={{ color: chromeColor }} />
+                  <ChromeMark size={28} className="opacity-70 text-chrome-silver" />
                   <div>
                     <h2 className="hud-heading text-xl text-chrome-bright">Overlay Active</h2>
                     <p className="text-xs text-chrome-dim font-mono tracking-wide mt-1">
@@ -906,15 +890,16 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 relative">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-7 relative">
           {/* Left Panel: Enemy Selection */}
-          <div className="xl:col-span-3 space-y-6 animate-slide-in relative" style={{ zIndex: 100 }}>
+          <div className="xl:col-span-3 space-y-5 animate-slide-in relative" style={{ zIndex: 100 }}>
             <HudFrame accent="green" label="Hostiles" className="p-5">
-              <h2 className="hud-heading text-xl text-chrome-bright mb-5">
-                <ChromeMark size={14} style={{ color: chromeColor }} /> Enemy Squad
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-chrome-dim mb-1">01 — Draft</p>
+              <h2 className="hud-heading text-xl text-chrome-bright mb-4">
+                <ChromeMark size={14} className="text-chrome-silver inline-block align-[-2px] mr-1.5" /> Enemy Squad
               </h2>
-              <p className="text-[9px] font-mono text-chrome-dim/70 mb-3 tracking-wide">
-                Auto-fills from champ select when Live.
+              <p className="text-[10px] font-mono text-chrome-dim/75 mb-3 tracking-wide leading-relaxed">
+                Auto-fills from champ select when the client is live.
               </p>
               <ChampionSelect
                 champions={champions}
@@ -938,11 +923,12 @@ const App: React.FC = () => {
 
             {/* Ally lanes relevant to active profile */}
             <HudFrame accent="cyan" label="Bond" className="p-5">
-              <h2 className="hud-heading text-xl text-chrome-bright mb-5">
-                <ChromeMark size={14} className="text-chrome-dim" />{' '}
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-chrome-dim mb-1">02 — Allies</p>
+              <h2 className="hud-heading text-xl text-chrome-bright mb-4">
+                <ChromeMark size={14} className="text-chrome-dim inline-block align-[-2px] mr-1.5" />{' '}
                 {profile.id === 'yone-mid' ? 'Ally Jungle' : 'Ally Lanes'}
               </h2>
-              <p className="text-[9px] font-mono text-chrome-dim/70 mb-3 tracking-wide">
+              <p className="text-[10px] font-mono text-chrome-dim/75 mb-3 tracking-wide leading-relaxed">
                 {profile.id === 'yone-mid'
                   ? 'You are mid — matchup math uses your jungler, not another mid.'
                   : profile.id === 'pantheon-support'
@@ -960,7 +946,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Right Panel: Build & Analysis */}
-          <div className="xl:col-span-9 space-y-6 relative" style={{ zIndex: 1 }}>
+          <div className="xl:col-span-9 space-y-5 relative" style={{ zIndex: 1 }}>
             {build && runes && analysis ? (
               <BuildDisplay
                 build={build}
@@ -974,20 +960,24 @@ const App: React.FC = () => {
                 accentColor={chromeColor}
               />
             ) : (
-              <HudFrame accent="steel" label="Standby" className="hud-scanlines min-h-[420px] p-12 animate-fade-in">
-                <div className="h-full flex flex-col items-center justify-center text-chrome-dim">
+              <HudFrame accent="steel" label="Standby" className="hud-standby min-h-[420px] p-10 sm:p-14 animate-fade-in">
+                <div className="h-full flex flex-col items-center justify-center text-center text-chrome-dim max-w-md mx-auto">
+                  <div className="hud-standby-mark mb-6">
+                    <ChromeMark size={36} className="text-chrome-silver/70" />
+                  </div>
                   <img
                     src={championSquareUrl(profile.championId)}
                     alt=""
-                    width={72}
-                    height={72}
-                    className="mb-6 opacity-50 hud-champ-icon hud-champ-icon--xl"
+                    width={64}
+                    height={64}
+                    className="mb-5 opacity-55 hud-champ-icon hud-champ-icon--xl"
                     decoding="async"
                     draggable={false}
                   />
-                  <p className="hud-heading text-2xl text-chrome-dim">Awaiting Data</p>
-                  <p className="text-sm mt-3 text-chrome-dim/70 font-mono border-t border-white/10 pt-3 tracking-wider">
-                    Select enemies (or enter champ select) for {profile.label} analysis.
+                  <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-chrome-dim mb-2">Standby</p>
+                  <p className="hud-heading text-2xl text-chrome-bright/90">Awaiting draft</p>
+                  <p className="text-sm mt-3 text-chrome-dim/80 font-mono border-t border-white/10 pt-3 tracking-wide leading-relaxed">
+                    Select enemies — or enter champ select — for {profile.label} doctrine, runes, and export.
                   </p>
                 </div>
               </HudFrame>

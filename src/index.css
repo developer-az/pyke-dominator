@@ -43,26 +43,13 @@ body {
   background: #070708;
 }
 
-/* Main window — Chrome Hearts black / polished silver */
+/* Main window — base ink; atmosphere layer paints the gradients */
 html:not(.overlay-root) body {
-  background:
-    radial-gradient(1100px 560px at 12% -8%, rgba(242, 244, 247, 0.07), transparent 55%),
-    radial-gradient(900px 480px at 92% 8%, rgba(155, 28, 46, 0.1), transparent 52%),
-    linear-gradient(180deg, #0e0e12 0%, #070708 48%, #050506 100%);
+  background: #070708;
 }
 
 html:not(.overlay-root) body::before {
-  content: '';
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  opacity: 0.04;
-  background-image:
-    linear-gradient(rgba(212, 216, 222, 0.45) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(212, 216, 222, 0.35) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse at center, black 18%, transparent 78%);
+  display: none;
 }
 
 html.overlay-root,
@@ -91,21 +78,22 @@ html.overlay-root body {
   --accent: var(--chrome-silver);
   --accent-soft: rgba(212, 216, 222, 0.14);
   position: relative;
+  /* Site-matched fill — no backdrop-filter (GPU tax while League is open) */
   background:
-    radial-gradient(120% 80% at 50% -20%, rgba(255, 255, 255, 0.06), transparent 45%),
-    linear-gradient(165deg, rgba(28, 28, 32, 0.9), rgba(6, 6, 8, 0.78) 55%, rgba(10, 8, 10, 0.84));
-  border: 1px solid var(--chrome-line);
+    linear-gradient(135deg, rgba(242, 244, 247, 0.06), transparent 42%),
+    linear-gradient(165deg, rgba(22, 22, 26, 0.88), rgba(8, 8, 10, 0.72) 55%, rgba(10, 8, 10, 0.8));
+  border: 1px solid rgba(212, 216, 222, 0.28);
   clip-path: polygon(
     0 14px, 14px 0, calc(100% - 14px) 0, 100% 14px,
     100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px)
   );
-  backdrop-filter: blur(14px) saturate(0.85);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.85) inset,
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 14px 40px rgba(0, 0, 0, 0.5),
-    0 0 28px var(--accent-soft);
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 18px 48px rgba(0, 0, 0, 0.4),
+    0 0 24px var(--accent-soft);
   overflow: hidden;
+  contain: layout paint;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .hud-panel::before {
@@ -314,13 +302,55 @@ html.overlay-root body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 18px rgba(242, 244, 247, 0.2));
+  /* Soft glow via text-shadow only — cheaper than filter: drop-shadow on large type */
+  text-shadow: 0 0 28px rgba(242, 244, 247, 0.12);
 }
 
 .hud-app-shell {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+}
+
+/* Site atmosphere — fixed CSS gradients + faint grid (no blur, no animated noise) */
+.app-atmosphere {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(1100px 560px at 12% -8%, rgba(242, 244, 247, 0.07), transparent 55%),
+    radial-gradient(900px 480px at 92% 8%, rgba(155, 28, 46, 0.14), transparent 52%),
+    linear-gradient(180deg, #0e0e12 0%, #070708 48%, #050506 100%);
+}
+
+.app-atmosphere::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.04;
+  background-image:
+    linear-gradient(rgba(212, 216, 222, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212, 216, 222, 0.35) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 18%, transparent 78%);
+}
+
+.app-content {
+  position: relative;
+  z-index: 1;
+}
+
+.chrome-rule {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(212, 216, 222, 0.45) 18%,
+    rgba(155, 28, 46, 0.35) 50%,
+    rgba(212, 216, 222, 0.45) 82%,
+    transparent
+  );
 }
 
 .hud-titlebar {
@@ -896,6 +926,94 @@ html.overlay-root body {
   gap: 0.45rem;
 }
 
+.hud-toolbar-panel {
+  padding: 0.7rem 0.85rem 0.65rem;
+  border: 1px solid rgba(212, 216, 222, 0.18);
+  background:
+    linear-gradient(135deg, rgba(242, 244, 247, 0.04), transparent 45%),
+    rgba(8, 8, 10, 0.45);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.hud-toolbar-hint {
+  margin: 0.55rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(138, 145, 156, 0.75);
+  line-height: 1.45;
+}
+
+.hud-toolbar-hint strong {
+  color: var(--chrome-dim);
+  font-weight: 500;
+}
+
+.hud-brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(212, 216, 222, 0.28);
+  background: rgba(8, 8, 10, 0.55);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+
+.hud-profile-switch {
+  display: inline-flex;
+  border: 1px solid rgba(212, 216, 222, 0.28);
+  overflow: hidden;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.hud-profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome-dim);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid rgba(212, 216, 222, 0.14);
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.hud-profile-tab:last-child {
+  border-right: 0;
+}
+
+.hud-profile-tab:hover {
+  color: var(--chrome-bright);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hud-profile-tab.is-active {
+  color: var(--chrome-bright);
+  background: rgba(212, 216, 222, 0.14);
+}
+
+.hud-chip--quiet {
+  --accent: var(--chrome-dim);
+  color: var(--chrome-dim);
+  border-color: rgba(138, 145, 156, 0.35);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.hud-standby-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(212, 216, 222, 0.22);
+  background: rgba(8, 8, 10, 0.4);
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
 .hud-input {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(212, 216, 222, 0.22);
@@ -920,17 +1038,17 @@ html.overlay-root body {
 }
 
 .hud-dropdown {
-  background: rgba(8, 8, 10, 0.96);
+  background: rgba(8, 8, 10, 0.98);
   border: 1px solid rgba(212, 216, 222, 0.35);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
-  backdrop-filter: blur(12px);
+  /* No backdrop-filter — keeps champ-select dropdown cheap */
 }
 
 .hud-main-header {
   position: relative;
   min-height: 7.5rem;
-  padding: 0.75rem 0.25rem 1.25rem;
+  padding: 0.85rem 0.15rem 1.1rem;
 }
 
 /* Atmospheric splash — opacity + gradient mask only (no backdrop-filter / blur) */
@@ -1034,17 +1152,24 @@ html.overlay-root body {
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 0.3rem 0.55rem;
+  padding: 0.35rem 0.65rem;
   color: var(--chrome-dim);
   border: 1px solid rgba(212, 216, 222, 0.28);
   background: rgba(0, 0, 0, 0.35);
   clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
-  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 .hud-btn:hover {
   color: var(--chrome-bright);
   border-color: rgba(242, 244, 247, 0.55);
-  box-shadow: 0 0 10px rgba(242, 244, 247, 0.12);
+  background: rgba(242, 244, 247, 0.04);
+  box-shadow: 0 0 10px rgba(242, 244, 247, 0.1);
+}
+.hud-btn--active {
+  color: var(--chrome-bright);
+  border-color: rgba(212, 216, 222, 0.6);
+  background: rgba(212, 216, 222, 0.08);
+  box-shadow: 0 0 12px rgba(242, 244, 247, 0.1);
 }
 
 @keyframes hud-rail-pulse {
@@ -1129,4 +1254,16 @@ html:not(.overlay-root) .font-sans {
 }
 html:not(.overlay-root) .font-mono {
   font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-in,
+  .hud-status-dot,
+  .hud-btn,
+  .hud-profile-tab,
+  .hud-panel {
+    animation: none !important;
+    transition: none !important;
+  }
 }

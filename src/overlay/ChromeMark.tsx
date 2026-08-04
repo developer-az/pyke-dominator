@@ -34,6 +34,6 @@ export const ChromeMark: React.FC<{
     {/* Small side barbs */}
     <path fill="currentColor" opacity="0.65" d="M12 6.2 L14.2 7.4 L12 7.1 L9.8 7.4 Z" />
     <circle cx="12" cy="11.8" r="1.35" fill="#070708" />
-    <circle cx="12" cy="11.8" r="0.55" fill="currentColor" />
+    <circle cx="12" cy="11.8" r="0.55" fill="#9b1c2e" />
   </svg>
 );

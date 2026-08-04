@@ -13,7 +13,8 @@
     "appId": "com.onetrick.app",
     "productName": "One Trick",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -25,11 +26,17 @@
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
       ],
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   },
   "scripts": {
@@ -44,7 +51,8 @@
     "pack": "npm run build && npm run electron:build && electron-builder --dir",
     "dist": "npm run build && npm run electron:build && electron-builder",
     "website:dev": "npm --prefix website run dev",
-    "website:build": "npm --prefix website run build"
+    "website:build": "npm --prefix website run build",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "axios": "^1.6.0",
