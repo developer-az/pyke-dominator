@@ -12,8 +12,8 @@ import {
 const features = [
   {
     kicker: '01 — Matchup',
-    title: 'Know the lane before the load screen.',
-    body: 'Enemy roles lock in and One Trick answers with items, runes, and a dominance read shaped for how you actually play the pick — not a generic dump.',
+    title: 'Doctrine on the load screen.',
+    body: 'Enemy roles lock in and One Trick answers with items, runes, and exact how-to-play lines for the matchup — so you leave the companion UI and play the game.',
   },
   {
     kicker: '02 — Export',
@@ -22,8 +22,8 @@ const features = [
   },
   {
     kicker: '03 — Overlay',
-    title: 'Chrome that respects the map.',
-    body: 'Summoner timing, vision cues, roam windows. Sync HUD scale from League, calibrate by the pixel, then lock click-through so it never steals focus.',
+    title: 'Chrome that stays in the fight.',
+    body: 'Dual-rail HUD: enemy sums, purpose-first wards, gank square from jungler pathing, pro tips. PageUp / PageDown toggle Flash while League has focus. Lock click-through — it does not steal the game.',
   },
 ]
 
@@ -43,9 +43,9 @@ const profiles = [
 ]
 
 const steps = [
-  { n: '01', title: 'Install', body: 'Grab the Windows setup from Releases and launch with League open.' },
-  { n: '02', title: 'Lock in', body: 'Champ select fills enemies as picks land. Review the loadout.' },
-  { n: '03', title: 'Export & play', body: 'Push runes and items into the client. Overlay appears when the match starts.' },
+  { n: '01', title: 'Install', body: 'Grab One.Trick.Setup from the latest full release and launch with League open.' },
+  { n: '02', title: 'Lock in', body: 'Champ select fills enemies. Read the matchup doctrine, then export.' },
+  { n: '03', title: 'Play', body: 'Overlay stays up: Flash toggles, gank square, vision jobs. Borderless mode.' },
 ]
 
 const base = import.meta.env.BASE_URL
@@ -120,7 +120,7 @@ export default function App() {
                 className="animate-fade-up mt-5 max-w-md text-lg leading-relaxed text-chrome-silver/85 sm:text-xl"
                 style={{ animationDelay: '120ms' }}
               >
-                Your lane plan, already loaded — matchups, runes, and chrome that stays with you into the game.
+                Matchup doctrine, loadout export, and a live overlay for Pyke, Pantheon, and Yone — built for the minutes a guide can’t sit next to you.
               </p>
               <div className="animate-fade-up mt-8" style={{ animationDelay: '220ms' }}>
                 <DownloadButtons release={release} />
@@ -155,9 +155,9 @@ export default function App() {
                   Built for the minutes where a README can’t sit next to you.
                 </h2>
                 <p className="mt-5 max-w-lg text-base leading-relaxed text-chrome-dim sm:text-lg">
-                  One Trick is a personal League companion — not a wall of markdown. It watches champ select,
-                  shapes a loadout for the matchup, pushes it into the client, and keeps a quiet chrome HUD
-                  alive while you play. Pyke Support first; Pantheon and Yone when the draft asks.
+                  One Trick watches champ select, shapes a loadout for the matchup, pushes it into the client,
+                  and keeps a dual-rail chrome HUD alive while you play — gank timing, vision jobs, summoner
+                  toggles. Pyke Support first; Pantheon and Yone when the draft asks.
                 </p>
               </Reveal>
               <Reveal delayMs={80}>
@@ -253,7 +253,7 @@ export default function App() {
                     Download the latest Windows build.
                   </h2>
                   <p className="mt-4 text-base leading-relaxed text-chrome-dim">
-                    Pulled live from GitHub Releases — including public betas. Setup installer preferred.
+                    Pulled live from GitHub Releases. Latest full Windows setup preferred.
                   </p>
                   <div className="mt-8">
                     <DownloadButtons release={release} />

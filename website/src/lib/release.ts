@@ -1,5 +1,4 @@
-const REPO = 'developer-az/pyke-dominator'
-/** Releases index — /latest excludes GitHub prereleases (all our betas). */
+const REPO = 'developer-az/One-Trick-Client'
 export const RELEASES_URL = `https://github.com/${REPO}/releases`
 export const REPO_URL = `https://github.com/${REPO}`
 
@@ -36,9 +35,19 @@ function pickExe(assets: GhAsset[]): GhAsset | undefined {
   )
 }
 
+function toInfo(data: GhRelease, asset: GhAsset): ReleaseInfo {
+  return {
+    tag: data.tag_name,
+    name: data.name || data.tag_name,
+    downloadUrl: asset.browser_download_url,
+    assetName: asset.name,
+    prerelease: !!data.prerelease,
+  }
+}
+
 /**
- * Newest published release that has a Windows .exe — includes prereleases
- * (v1.0.0-beta.*). GitHub's /releases/latest endpoint skips prereleases.
+ * Prefer the newest full (non-prerelease) Windows build.
+ * Falls back to the newest published release with an .exe if no stable build exists.
  */
 export async function fetchLatestRelease(): Promise<ReleaseInfo | null> {
   try {
@@ -49,19 +58,16 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo | null> {
     const list = (await res.json()) as GhRelease[]
     if (!Array.isArray(list)) return null
 
+    let fallback: ReleaseInfo | null = null
     for (const data of list) {
       if (data.draft) continue
       const asset = pickExe(data.assets || [])
       if (!asset) continue
-      return {
-        tag: data.tag_name,
-        name: data.name || data.tag_name,
-        downloadUrl: asset.browser_download_url,
-        assetName: asset.name,
-        prerelease: !!data.prerelease,
-      }
+      const info = toInfo(data, asset)
+      if (!info.prerelease) return info
+      if (!fallback) fallback = info
     }
-    return null
+    return fallback
   } catch {
     return null
   }

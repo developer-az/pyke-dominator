@@ -1,14 +1,16 @@
-# Pyke Dominator
+# One Trick
 
 <div align="center">
 
-**Desktop companion for Pyke support — matchup analysis, loadout export, and a live in-game overlay**
+**Windows League companion for Pyke Support, Pantheon Support, and Yone Mid — matchup doctrine, loadout export, and a live in-game overlay**
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/developer-az/pyke-dominator/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/developer-az/One-Trick-Client/releases/tag/v1.0.0)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.2-blue)](https://react.dev/)
 [![Electron](https://img.shields.io/badge/Electron-39-blue)](https://www.electronjs.org/)
+
+[Download v1.0.0](https://github.com/developer-az/One-Trick-Client/releases/tag/v1.0.0) · [Site](https://developer-az.github.io/One-Trick-Client/) · [Issues](https://github.com/developer-az/One-Trick-Client/issues)
 
 </div>
 
@@ -16,9 +18,9 @@
 
 ## Overview
 
-**Pyke Dominator** is a Windows desktop app for League of Legends Pyke support players. It connects to the League Client, fills enemy picks in champion select, recommends items and runes for the matchup, exports loadouts into the client, and shows a lightweight chrome overlay while you play.
+**One Trick** connects to the League Client, fills enemy picks in champion select, recommends items and runes for your profile, exports loadouts into the client, and keeps a dual-rail chrome overlay alive while you play.
 
-Designed for ranked climbing and practice — clear recommendations, one-click export, and an overlay that stays out of the way when locked.
+Profiles: **Pyke Support**, **Pantheon Support**, **Yone Mid**.
 
 ---
 
@@ -26,29 +28,35 @@ Designed for ranked climbing and practice — clear recommendations, one-click e
 
 ### Matchup & loadout
 
-- **Enemy composition analysis** — Top, Jungle, Mid, Bot, Support
-- **Item builds** — Core path, boots, and situational picks (Edge of Night, Maw, Serpent’s Fang, and more) based on tanks, burst, CC, and magic threats
-- **Rune pages** — Primary and secondary trees adapted to poke, CC, and lane shape, with short explanations
-- **Dominance gauge** — Quick read on how favorable the bot-lane / team setup is for Pyke
-- **Ally context** — Optional ADC and Mid picks for 2v2 and roam-aware scoring
-- **Lane insights** — Difficulty, lane tips, all-in windows, and damage estimates at key levels
+- **Enemy composition analysis** by role
+- **Profile builds** — core path first, then boots, then situational (boots are not forced to the front of the checklist)
+- **Rune pages** adapted to poke, CC, and lane shape
+- **Dominance gauge** for how favorable the setup is
+- **Loading-screen doctrine** — exact how-to-play lines for the matchup so you can leave the companion UI and focus on macro
+- **Ally context** — ADC / Mid / Jungle when the draft asks
 
 ### League Client integration
 
 - Auto-connects when the League Client is running
-- Detects champion select and fills enemy roles as picks lock in
-- **Export runes** and **item sets** into the client with one action
-- Clears back to a ready state after the match so the next lobby starts clean
+- Fills enemies as champ select locks in
+- **Export runes** and **item sets** with one action
+- Clears cleanly after the match for the next lobby
 
 ### In-game overlay
 
-- Transparent chrome frames around the ability bar and minimap
-- Live-client aware: appears when a match is active, tears down after the game
-- **HUD Scale** and **Minimap Scale** sliders (0–100) to match League’s Interface settings
-- **Sync LoL** — reads `GlobalScale` / `MinimapScale` from League’s `game.cfg`
-- Per-pixel **calibration** (nudge ability / map frames) when unlocked
-- Custom **chrome color** with presets
-- Performance-minded: overlay is created only in-game; hidden overlay is throttled so it does not fight League for GPU/CPU
+- Dual-rail HUD: enemy summoners on the left, cues / buy / vision on the right
+- **Gank probability square** — yellow = fog / low-vision risk; red = brief high window from per-jungler pathing
+- **Purpose-first wards** — what the ward is for, pink count, sweep targets when Oracle / Control Ward is held (pots first early — no pink on the open)
+- **Pro-level tips** and roam / cannon windows (no basic filler)
+- Transparent chrome around ability bar and minimap; **Sync LoL** reads Interface scales from `game.cfg`
+- Stays visible mid-match — click-through healed, soft LCU flaps do not tear it down
+
+### Summoner timers
+
+- Tracks enemy bot (ADC + Support) or mid Flash / combat sums from Live Client + kill events
+- **PageUp / PageDown** toggle Flash (press again to clear) via a **Windows low-level keyboard hook** so keys work while League has focus
+- Numpad **9** / **3** fallbacks
+- Mid: PageUp = Mid Flash, PageDown = Ignite / TP / Flash fallback
 
 ---
 
@@ -56,34 +64,32 @@ Designed for ranked climbing and practice — clear recommendations, one-click e
 
 ### From a release (recommended)
 
-1. Open [Releases](https://github.com/developer-az/pyke-dominator/releases) and download **v1.3.0**
-2. Choose either:
-   - **Portable** — `Pyke Dominator 1.3.0.exe` (run directly, no install)
-   - **Setup** — `Pyke Dominator Setup 1.3.0.exe` (NSIS installer)
-3. Launch the app with the League Client open (or start League afterward — it reconnects automatically)
+1. Open [**v1.0.0**](https://github.com/developer-az/One-Trick-Client/releases/tag/v1.0.0)
+2. Download **`One.Trick.Setup.1.0.0.exe`**
+3. Launch with the League Client open (or start League afterward — it reconnects)
 
 ### From source
 
 ```bash
-git clone https://github.com/developer-az/pyke-dominator.git
-cd pyke-dominator
+git clone https://github.com/developer-az/One-Trick-Client.git
+cd One-Trick-Client
 npm install
 npm run dist
 ```
 
-Installer and portable builds land in the `release/` folder.
+Builds land in `release/`.
 
 ---
 
 ## Quick start
 
-1. Start **League of Legends**, then open **Pyke Dominator**
-2. Enter champion select as Pyke (or any role — enemy fills still apply)
-3. Review the recommended **items**, **runes**, and **matchup** panel
-4. Click **Export** to push the rune page and item set into the client
-5. When the game starts, the overlay appears automatically (if not hidden)
+1. Start **League of Legends**, then open **One Trick**
+2. Lock in on a supported profile (Pyke / Pantheon / Yone)
+3. Review **items**, **runes**, and **matchup doctrine**
+4. Click **Export** to push into the client
+5. Overlay appears when the match starts (Borderless display mode)
 
-You can also pick enemies manually with the searchable champion dropdowns for practice or when LCU is unavailable (Demo mode).
+Manual enemy picks still work when LCU is unavailable (Demo mode).
 
 ---
 
@@ -91,28 +97,30 @@ You can also pick enemies manually with the searchable champion dropdowns for pr
 
 | Action | Shortcut / control |
 |--------|--------------------|
-| Show / hide overlay | **Ctrl+Shift+H** (or **Overlay On/Off** in the app) |
-| Lock (click-through) / unlock (move & calibrate) | **Ctrl+Shift+U** |
-| Match League HUD / minimap scale | Sliders **HUD** / **Map**, or **Sync LoL** |
-| Chrome accent color | Color picker + presets in the toolbar |
-| Fine-tune frame alignment | Unlock overlay → nudge Ability / Map marks → optional Reset |
+| Toggle primary Flash (ADC or Mid) | **PageUp** or **Numpad 9** |
+| Toggle Support Flash / Mid Ignite·TP | **PageDown** or **Numpad 3** |
+| Show / hide overlay | **Ctrl+Shift+H** |
+| Lock (click-through) / unlock panel | **Ctrl+Shift+U** |
+| Align HUD / minimap frames | Unlock → **Align** → nudge Ability / Map |
+| Match League scales | **Sync LoL** or HUD / Map sliders |
 
-When unlocked, drag the compact overlay window and use the Ability / Map nudge buttons (← → ↑ ↓, W±, H±) so the chrome lines up with your exact client. Calibration is saved between sessions.
+### Display mode (FPS)
 
-### Display mode tip (important for FPS)
+Set League **Video → Display Mode** to **Borderless**. Exclusive Fullscreen forces expensive recomposition under an always-on-top overlay.
 
-Set League’s **Video → Display Mode** to **Borderless**.
+### Hotkeys while League has focus
 
-Overlays on top of **exclusive Fullscreen** force Windows to recompose every frame and can cost real FPS. Borderless keeps the overlay cheap and the game responsive.
+PageUp / PageDown use a system keyboard hook (`uiohook-napi`), not Electron’s accelerator registry alone.
+
+If keys still do nothing: **run One Trick as Administrator** whenever League is elevated — Windows UIPI blocks hooks across that privilege gap.
 
 ---
 
 ## Usage notes
 
-- **LCU** — Requires the League Client running. Champion auto-fill works in champion select; export needs a live client session.
-- **Post-game reset** — After a match ends, champ-select caches and overlay state clear so the next game starts fresh.
-- **Hotkey conflicts** — If Ctrl+Shift+H or Ctrl+Shift+U do nothing, another app may own those shortcuts; use the in-app Overlay / Lock buttons instead.
-- **Data** — Champions, items, and runes load from Riot’s Data Dragon CDN (latest patch when available).
+- **LCU** — Client must be running for champ-select fill and export
+- **Live Client** — Overlay and summoner heuristics need an active match
+- **Data** — Champions / items / runes from Riot Data Dragon
 
 ---
 
@@ -122,79 +130,45 @@ Overlays on top of **exclusive Fullscreen** force Windows to recompose every fra
 
 - Node.js 18+
 - npm
-- Windows (Electron desktop features and LCU/overlay)
+- Windows (Electron, LCU, overlay, keyboard hook)
 
 ### Commands
 
 ```bash
-# Web UI only
-npm run dev
-
-# Desktop app with Vite + Electron (Windows helper)
-npm run dev:electron:win
-# or
-npm run dev:electron
-
-# Production web build
-npm run build
-
-# Full Windows installers (NSIS + portable) → release/
-npm run dist
-
-# Unpackaged app dir (faster local check)
-npm run pack
-
-# Product landing site (website/)
-npm run website:dev
+npm run dev                 # Web UI only
+npm run dev:electron:win    # Desktop + Vite
+npm run build               # Web production build
+npm run dist                # NSIS + portable → release/
+npm run website:dev         # Marketing site
 npm run website:build
+npm run lint
 ```
 
-| Script | Purpose |
-|--------|---------|
-| `npm run dev` | Vite dev server |
-| `npm run dev:electron` / `dev:electron:win` | Electron + hot reload |
-| `npm run build` | Web production build |
-| `npm run electron:build` | Compile Electron main process |
-| `npm run dist` | Build + electron-builder (NSIS + portable) |
-| `npm run pack` | Build + electron-builder `--dir` |
-| `npm run website:dev` | Dominator marketing site (see `website/`) |
-| `npm run website:build` | Build marketing site for Vercel / GitHub Pages |
-| `npm run lint` | ESLint |
-| `npm run preview` | Preview production web build |
-
-### Project layout
+### Layout
 
 ```
-pyke-dominator/
-├── electron/           # Main process, LCU, live client, overlay window
+One-Trick-Client/
+├── electron/           # Main process, LCU, live client, overlay, key hook
 ├── src/
-│   ├── components/     # UI (champion select, build display, gauge, HUD frame)
-│   ├── data/           # Data Dragon services
-│   ├── logic/          # Build / rune / matchup logic
-│   ├── overlay/        # In-game overlay React app
-│   └── App.tsx         # Main window
-├── overlay.html        # Overlay entry
-├── scripts/            # Perf / geometry helpers
+│   ├── components/     # Main window UI
+│   ├── logic/          # Builds, matchups, jungle, vision
+│   └── overlay/        # In-game overlay React app
+├── website/            # Product landing (GitHub Pages)
 └── release/            # electron-builder output
 ```
 
 ### Stack
 
-- React 19 · TypeScript 5.9 · Vite 7 · Electron 39 · Tailwind CSS 3.4
-- **Data Dragon** — champions, runes, icons
-- **LCU** — champ select session, rune pages, item sets
-- **Live Client API** — in-game player/state for the overlay
+React 19 · TypeScript 5.9 · Vite 7 · Electron 39 · Tailwind CSS 3.4 · Data Dragon · LCU · Live Client API · uiohook-napi
 
 ---
 
 ## Contributing
 
-Pull requests are welcome.
-
-1. Fork the repo and create a feature branch
+1. Fork and branch
 2. Keep TypeScript / ESLint clean
-3. Test LCU export and overlay hotkeys on Windows when you touch those paths
-4. Open a PR with a short description of the change
+3. Test LCU export, overlay persistence, and PageUp/PageDown on Windows when you touch those paths
+4. Open a PR with a short description
 
 ---
 
@@ -206,16 +180,17 @@ MIT — see [LICENSE](LICENSE).
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/developer-az/pyke-dominator/issues)
-- **Releases**: [GitHub Releases](https://github.com/developer-az/pyke-dominator/releases)
-- **Repository**: [developer-az/pyke-dominator](https://github.com/developer-az/pyke-dominator)
+- **Issues**: [GitHub Issues](https://github.com/developer-az/One-Trick-Client/issues)
+- **Releases**: [GitHub Releases](https://github.com/developer-az/One-Trick-Client/releases)
+- **Site**: [developer-az.github.io/One-Trick-Client](https://developer-az.github.io/One-Trick-Client/)
+- **Repository**: [developer-az/One-Trick-Client](https://github.com/developer-az/One-Trick-Client)
 
 ---
 
 <div align="center">
 
-**Built for Pyke players**
+**Built for one-tricks**
 
-*Pyke Dominator is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends. League of Legends and Riot Games are trademarks or registered trademarks of Riot Games, Inc.*
+*One Trick is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends. League of Legends and Riot Games are trademarks or registered trademarks of Riot Games, Inc.*
 
 </div>

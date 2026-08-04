@@ -865,7 +865,7 @@ const App: React.FC = () => {
           {window.electronAPI && (
             <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-chrome-dim/70">
               Tip: League in <strong className="text-chrome-dim">Borderless</strong> · <strong className="text-chrome-dim">Sync LoL</strong> then Align HUD ·{' '}
-              <strong className="text-chrome-dim">PageUp</strong> ADC Flash / <strong className="text-chrome-dim">PageDown</strong> Support Flash (toggle) · Ctrl+Shift+U unlock panel · Ctrl+Shift+H hide
+              <strong className="text-chrome-dim">PageUp</strong> / <strong className="text-chrome-dim">PageDown</strong> Flash toggles (Numpad 9/3) · Ctrl+Shift+U unlock · Ctrl+Shift+H hide
             </p>
           )}
         </header>
@@ -880,7 +880,8 @@ const App: React.FC = () => {
                   <div>
                     <h2 className="hud-heading text-xl text-chrome-bright">Overlay Active</h2>
                     <p className="text-xs text-chrome-dim font-mono tracking-wide mt-1">
-                      Dual-rail HUD: sums left, cues right. PageUp / PageDown toggle ADC / Support Flash (press again to reset).
+                      Dual-rail HUD: sums left, cues right. PageUp / PageDown toggle Flash while League has focus
+                      (elevate One Trick if League is admin).
                     </p>
                   </div>
                 </div>
