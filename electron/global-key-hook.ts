@@ -114,6 +114,14 @@ export function startFlashKeyHook(next: FlashKeyHandlers): boolean {
                 '[keys] Low-level keyboard hook started (PageUp/PageDown + Numpad9/3). ' +
                     'If League is Run as Administrator, run One Trick elevated too.'
             );
+        } else {
+            // Mid-match rebind: restart the hook — Windows occasionally drops LL hooks
+            try {
+                uIOhook.stop();
+                uIOhook.start();
+            } catch {
+                // ignore restart failures; listeners remain registered
+            }
         }
         return true;
     } catch (error: unknown) {

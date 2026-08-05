@@ -127,19 +127,54 @@ function profileFor(name: string): JunglerPathProfile | null {
  * Estimate whether enemy jg is threatening the focus lane.
  * Red (high) only fires inside brief templated windows — yellow covers fog risk.
  */
+function hasSmite(e: {
+  summonerSpells?: {
+    summonerSpellOne?: { displayName?: string };
+    summonerSpellTwo?: { displayName?: string };
+  };
+}): boolean {
+  const a = (e.summonerSpells?.summonerSpellOne?.displayName || '').toLowerCase();
+  const b = (e.summonerSpells?.summonerSpellTwo?.displayName || '').toLowerCase();
+  return a.includes('smite') || b.includes('smite');
+}
+
 export function assessJungleThreat(
   gameTime: number,
-  enemies: Array<{ championName: string; level?: number; position?: string; scores?: { creepScore?: number } }>,
+  enemies: Array<{
+    championName: string;
+    level?: number;
+    position?: string;
+    scores?: { creepScore?: number };
+    summonerSpells?: {
+      summonerSpellOne?: { displayName?: string };
+      summonerSpellTwo?: { displayName?: string };
+    };
+  }>,
   focusLane: 'bot' | 'mid' = 'bot'
 ): JungleThreat | null {
+  // Prefer Smite holder — Live Client often leaves position blank mid-game
   const jg =
+    enemies.find((e) => hasSmite(e)) ||
     enemies.find((e) => {
       const p = (e.position || '').toUpperCase();
       return p === 'JUNGLE' || p === 'JNG';
     }) ||
     enemies.find((e) => profileFor(e.championName) != null);
 
-  if (!jg) return null;
+  if (!jg) {
+    // Still surface a dim fog square so the rail isn't empty when jg is unknown
+    if (gameTime <= 0 || enemies.length === 0) return null;
+    return {
+      junglerName: 'Enemy jg',
+      sideBias: 'unknown',
+      gankRisk: 'medium',
+      probability: 35,
+      label: 'Fog — jg unknown',
+      detail: 'No Smite / jg role yet — play like river is contested.',
+      squareReason: 'Fog risk',
+      clearStyle: 'flex',
+    };
+  }
 
   const minutes = gameTime / 60;
   const name = jg.championName;

@@ -108,7 +108,19 @@ export const OverlayApp: React.FC = () => {
 
     const unsubUpdate = window.electronAPI.onOverlayUpdate((payload) => {
       const next = payload as OverlayState;
-      setState(next);
+      // Guard: never let an empty mid-match blip wipe living HUD state
+      setState((prev) => {
+        if (
+          prev.inGame &&
+          next.inGame &&
+          (prev.gameTime || 0) > 0 &&
+          (next.gameTime || 0) <= 0 &&
+          (!next.enemies || next.enemies.length === 0)
+        ) {
+          return prev;
+        }
+        return next;
+      });
       const resolved = resolveProfileId(next);
       if (isProfileId(resolved)) {
         setProfileId((prev) => (prev === resolved ? prev : resolved));
@@ -257,32 +269,35 @@ export const OverlayApp: React.FC = () => {
     [state, analysis, build, profileId, situation]
   );
 
-  // Cue TTLs — roam/tempo lines die fast so the panel stays game-timed
+  // Cue TTLs — expire then allow re-show (sticky ids must not die forever).
+  // Prefer gameTime-driven expiry so a 1Hz wall clock isn't required.
   const cueFirstSeen = useRef<Map<string, number>>(new Map());
-  const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  useEffect(() => {
-    // Reset TTLs when match ends / restarts
     if (!state.inGame) cueFirstSeen.current.clear();
   }, [state.inGame]);
 
   const cues = useMemo(() => {
-    const now = nowTick;
+    const gameTime = state.gameTime ?? 0;
     const seen = cueFirstSeen.current;
     const activeIds = new Set(rawCues.map((c) => c.id));
     for (const id of [...seen.keys()]) {
       if (!activeIds.has(id)) seen.delete(id);
     }
-    return rawCues.filter((cue) => {
-      if (!seen.has(cue.id)) seen.set(cue.id, now);
-      const age = (now - (seen.get(cue.id) || now)) / 1000;
+    const alive: typeof rawCues = [];
+    for (const cue of rawCues) {
+      if (!seen.has(cue.id)) seen.set(cue.id, gameTime);
+      const age = Math.max(0, gameTime - (seen.get(cue.id) || gameTime));
       const maxAge = cue.maxAgeSec ?? 30;
-      return age <= maxAge;
-    });
-  }, [rawCues, nowTick]);
+      if (age <= maxAge) {
+        alive.push(cue);
+        continue;
+      }
+      // Expired — clear so the next matching id can reappear with a fresh TTL
+      seen.delete(cue.id);
+    }
+    // Keep the rail populated: take next non-expired candidates after sticky expiry
+    return alive.slice(0, 3);
+  }, [rawCues, state.gameTime]);
 
   const wardStatus = useMemo(() => getWardStatus(state, profileId), [state, profileId]);
   const gankStatus = useMemo(() => getGankStatus(state, profileId), [state, profileId]);

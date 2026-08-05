@@ -277,7 +277,8 @@ export function createOverlayWindow(): BrowserWindow {
 
 /**
  * Cheap periodic self-heal: Windows can drop topmost / ignore-mouse mid-match.
- * Re-asserts always-on-top and click-through without touching bounds/focus.
+ * Only touch always-on-top / ignore-mouse when they actually drifted — calling
+ * setIgnoreMouseEvents every poll forces DWM recomposition and tanks FPS.
  */
 export function keepOverlayOnTop(): void {
     if (!overlayWin || overlayWin.isDestroyed()) return;
@@ -293,10 +294,12 @@ export function keepOverlayOnTop(): void {
     if (!overlayWin.isAlwaysOnTop()) {
         assertAlwaysOnTop(overlayWin);
     }
-    // Re-apply click-through while locked — Windows occasionally drops ignore-mouse
+    // Re-apply click-through only when locked — avoid no-op churn every poll
     if (clickThrough && !alignMode) {
         try {
-            overlayWin.setFocusable(false);
+            if (overlayWin.isFocusable()) {
+                overlayWin.setFocusable(false);
+            }
             overlayWin.setIgnoreMouseEvents(true, { forward: true });
         } catch {
             // ignore
