@@ -864,8 +864,9 @@ const App: React.FC = () => {
                   <div>
                     <h2 className="hud-heading text-xl text-chrome-bright">Overlay Active</h2>
                     <p className="text-xs text-chrome-dim font-mono tracking-wide mt-1">
-                      Dual-rail HUD: sums left, cues right. PageUp / PageDown toggle Flash while League has focus
-                      (elevate One Trick if League is admin).
+                      Main window is parked to save FPS — the overlay owns the live HUD
+                      (sums, wards, gank square, buy path). PageUp / PageDown toggle Flash
+                      while League has focus (elevate One Trick if League is admin).
                     </p>
                   </div>
                 </div>
@@ -875,7 +876,7 @@ const App: React.FC = () => {
                   </p>
                 )}
                 <p className="text-[10px] font-mono text-chrome-dim/70">
-                  Support item: keep Atlas → Bloodsong (never sell). Boots: mid-tier is complete.
+                  Restore this window after the match for export / next lobby. Mid-game: watch the overlay.
                 </p>
               </div>
             </HudFrame>

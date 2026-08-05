@@ -43,16 +43,24 @@ const IN_GAME_PHASES = new Set(['InProgress', 'GameStart']);
 const POLL_IDLE_MS = 5000;
 /** Champ select needs faster enemy/summoner ingest. */
 const POLL_CHAMPSELECT_MS = 2000;
-/** In-game: overlay owns the hot path; slower ticks = less CPU vs League. */
-const POLL_INGAME_MS = 3500;
-/** In-game with the overlay hidden: nothing is rendered, so just track match state. */
-const POLL_INGAME_HIDDEN_MS = 12000;
+/** In-game: overlay owns the hot path; ~2.5s keeps cues/wards fresh without thrashing. */
+const POLL_INGAME_MS = 2500;
+/** In-game with the overlay hidden: still ingest live for timers, but less often. */
+const POLL_INGAME_HIDDEN_MS = 8000;
 /** Clipboard is a synchronous OS call — never more than once per this window. */
 const CLIPBOARD_MIN_INTERVAL_MS = 20000;
-/** Soft end requires this many consecutive failed ticks (~14s at 3.5s poll). */
+/** Soft end requires this many consecutive failed ticks. */
 const END_GAME_STRIKES_NEEDED = 4;
+/** Re-assert always-on-top / ignore-mouse at most this often (DWM churn = FPS loss). */
+const KEEP_ON_TOP_MIN_MS = 20000;
+/** Re-bind PageUp/PageDown hook periodically — Windows can drop it mid-match. */
+const HOTKEY_REBIND_MIN_MS = 45000;
 
 let lastClipboardWrite = 0;
+let lastKeepOnTopAt = 0;
+let lastHotkeyRebindAt = 0;
+/** Last healthy live payload — never clobber the HUD with a null Live Client blip. */
+let lastGoodPayload: ReturnType<typeof buildOverlayPayload> | null = null;
 
 export interface CachedEnemy {
     championId: number;
@@ -254,11 +262,17 @@ function buildOverlayPayload(live: LiveClientAllGameData | null, gameflowPhase: 
 function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): string {
     const lp = payload.localPlayer;
     const itemKey = (lp?.items || []).map((i) => `${i.itemID}:${i.count}`).join(',');
+    const goldBucket = Math.floor((lp?.currentGold ?? 0) / 50);
+    const wardScore = Math.floor(lp?.scores?.wardScore ?? 0);
+    // Include CS + items so jungle pathing / threat heuristics actually update.
     const enemyKey = (payload.enemies || [])
-        .map((e) => `${e.championName}:${e.level}:${e.isDead ? 1 : 0}`)
+        .map((e) => {
+            const cs = e.scores?.creepScore ?? 0;
+            const items = (e.items || []).slice(0, 6).join(',');
+            return `${e.championName}:${e.level}:${e.isDead ? 1 : 0}:${cs}:${items}`;
+        })
         .join('|');
     // 1s buckets — ward countdown / cannon windows need second-level updates.
-    // Poll is already ~4s, so this just avoids skipping a tick inside a 6s bin.
     const timeBucket = Math.floor((payload.gameTime || 0) / 1);
     return [
         payload.gameflowPhase || '',
@@ -267,6 +281,8 @@ function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): st
         lp?.level ?? 0,
         lp?.isDead ? 1 : 0,
         itemKey,
+        goldBucket,
+        wardScore,
         enemyKey,
         payload.isPyke ? 1 : 0,
         payload.profileHint || '',
@@ -278,7 +294,28 @@ function overlayFingerprint(payload: ReturnType<typeof buildOverlayPayload>): st
 function resetMatchCaches(): void {
     lastChampSelectEnemies = [];
     lastOverlayFingerprint = '';
+    lastGoodPayload = null;
+    lastKeepOnTopAt = 0;
+    lastHotkeyRebindAt = 0;
     resetSummonerTracker();
+}
+
+function maybeKeepOverlayOnTop(): void {
+    const now = Date.now();
+    if (now - lastKeepOnTopAt < KEEP_ON_TOP_MIN_MS) return;
+    lastKeepOnTopAt = now;
+    keepOverlayOnTop();
+}
+
+function maybeRebindHotkeys(): void {
+    const now = Date.now();
+    if (now - lastHotkeyRebindAt < HOTKEY_REBIND_MIN_MS) return;
+    lastHotkeyRebindAt = now;
+    try {
+        onMatchStartHotkeys?.();
+    } catch {
+        // ignore
+    }
 }
 
 function setPollCadence(ms: number): void {
@@ -344,31 +381,28 @@ async function tick(): Promise<void> {
             setPollCadence(POLL_IDLE_MS);
         }
 
-        // Live client is the in-game hot path. Skip the HTTPS hit entirely when we
-        // already know we are in a terminal post-game phase (saves sockets + CPU),
-        // and when the overlay is hidden there is nothing to feed — only the
-        // gameflow phase matters for knowing the match ended.
+        // Live client is the in-game hot path. Always fetch while we believe a match
+        // is running (even if the overlay is hidden) so summoner ingest / timers keep.
+        // Skip only on known terminal post-game phases.
         const overlayHidden = isOverlayUserHidden();
         let live: LiveClientAllGameData | null = null;
-        if ((phaseInGame || phase === null || inGame) && !(overlayHidden && phaseInGame)) {
-            if (!phaseMatchOver || inGame) {
-                live = await fetchLiveClientData();
-            }
+        if ((phaseInGame || phase === null || inGame) && !phaseMatchOver) {
+            live = await fetchLiveClientData();
         }
         const liveAvailable = live !== null;
 
         // Prefer gameflow when known for true end-of-game. Lobby/ChampSelect mid-match
         // must NOT instantly kill the overlay — those blips happen when LCU flaps.
-        // If LCU phase is unknown (null) but live client is up (Practice Tool), trust live.
+        // Stay in-session on live blips if we already have a good payload.
         const shouldShow =
             phaseInGame ||
             (liveAvailable && !phaseMatchOver && phase === null) ||
-            (inGame && liveAvailable && !phaseMatchOver);
+            (inGame && !phaseMatchOver && (liveAvailable || !!lastGoodPayload));
 
         if (shouldShow) {
             const wasInGame = inGame;
             inGame = true;
-            endGameStrikes = 0;
+            if (liveAvailable) endGameStrikes = 0;
             if (destroyOverlayTimer) {
                 clearTimeout(destroyOverlayTimer);
                 destroyOverlayTimer = null;
@@ -381,9 +415,8 @@ async function tick(): Promise<void> {
                 syncScalesFromLeague();
                 createOverlayWindow();
                 showOverlay();
-                // Re-bind Flash hotkeys so PageUp/PageDown stay alive after League focus
+                lastHotkeyRebindAt = Date.now();
                 try {
-                    // Dynamically imported via callback set from main
                     onMatchStartHotkeys?.();
                 } catch {
                     // ignore
@@ -395,22 +428,54 @@ async function tick(): Promise<void> {
                     createOverlayWindow();
                     showOverlay();
                 }
-                keepOverlayOnTop();
+                maybeKeepOverlayOnTop();
+                maybeRebindHotkeys();
+            } else {
+                // Hidden: still refresh hotkeys so PageUp works when they unhide
+                maybeRebindHotkeys();
             }
 
-            if (overlayHidden) {
-                // Nothing is drawing — send match state once so the main window
-                // stays parked, then skip all payload/fingerprint work.
-                if (!wasInGame) {
-                    sendOverlayUpdate({ inGame: true, timestamp: Date.now() });
-                }
-            } else {
+            if (liveAvailable) {
                 const payload = buildOverlayPayload(live, phase);
-                const fp = overlayFingerprint(payload);
-                if (fp !== lastOverlayFingerprint) {
-                    lastOverlayFingerprint = fp;
-                    sendOverlayUpdate(payload);
+                lastGoodPayload = payload;
+                if (overlayHidden) {
+                    // Slim ping so the main window stays parked as "in match"
+                    if (!wasInGame) {
+                        sendOverlayUpdate({ inGame: true, timestamp: Date.now() });
+                    }
+                } else {
+                    const fp = overlayFingerprint(payload);
+                    if (fp !== lastOverlayFingerprint) {
+                        lastOverlayFingerprint = fp;
+                        sendOverlayUpdate(payload);
+                    }
                 }
+            } else if (lastGoodPayload) {
+                // Live Client blip — hold last good board (never wipe items/jungle/wards).
+                // Advance clock locally so countdowns keep moving; count strikes so a
+                // true disconnect still ends the session.
+                endGameStrikes += 1;
+                if (endGameStrikes >= END_GAME_STRIKES_NEEDED) {
+                    endGameSession();
+                } else {
+                    if (!overlayHidden) {
+                        const advanced = {
+                            ...lastGoodPayload,
+                            gameTime: (lastGoodPayload.gameTime || 0) + currentPollMs / 1000,
+                            timestamp: Date.now(),
+                        };
+                        lastGoodPayload = advanced;
+                        const fp = overlayFingerprint(advanced);
+                        if (fp !== lastOverlayFingerprint) {
+                            lastOverlayFingerprint = fp;
+                            sendOverlayUpdate(advanced);
+                        }
+                    } else if (!wasInGame) {
+                        sendOverlayUpdate({ inGame: true, timestamp: Date.now() });
+                    }
+                }
+            } else if (overlayHidden && !wasInGame) {
+                sendOverlayUpdate({ inGame: true, timestamp: Date.now() });
             }
         } else if (inGame) {
             // True end-of-game: end immediately.

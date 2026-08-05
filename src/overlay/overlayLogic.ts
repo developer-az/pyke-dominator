@@ -181,29 +181,31 @@ function finalizeCues(
       label: analysis.loadingDoctrine[0] || analysis.title,
       detail: analysis.loadingDoctrine.slice(1, 3).join(' · ').slice(0, 160),
       urgency: 'warn',
-      maxAgeSec: 55,
+      maxAgeSec: 70,
     });
   } else if (minutes >= 1.6 && analysis?.tips?.length) {
-    // Rotate one pro tip by game-minute bucket — skip basics (tips are already advanced)
-    const tip = analysis.tips[Math.floor(minutes) % analysis.tips.length];
+    // Rotate one pro tip every game-minute — id changes so TTL cannot bury the rail
+    const tipIdx = Math.floor(minutes) % analysis.tips.length;
+    const tip = analysis.tips[tipIdx];
     if (tip && tip.length > 24) {
       shared.push({
-        id: `pro-tip-${Math.floor(minutes / 2)}`,
+        id: `pro-tip-${Math.floor(minutes)}-${tipIdx}`,
         label: 'Pro read',
         detail: tip.slice(0, 140),
         urgency: 'info',
-        maxAgeSec: 40,
+        maxAgeSec: 55,
       });
     }
   }
 
   if (jg && (jg.gankRisk === 'high' || jg.gankRisk === 'medium')) {
+    // Id includes minute + risk so a sticky yellow/red line can refresh after TTL
     shared.push({
-      id: 'jg-threat',
+      id: `jg-threat-${jg.gankRisk}-${Math.floor(minutes)}`,
       label: jg.label,
       detail: jg.detail,
       urgency: jg.gankRisk === 'high' ? 'spike' : 'warn',
-      maxAgeSec: jg.gankRisk === 'high' ? 18 : 28,
+      maxAgeSec: jg.gankRisk === 'high' ? 22 : 35,
     });
   }
 
@@ -247,8 +249,8 @@ function finalizeCues(
       return true;
     })
     .sort((a, b) => priority[a.urgency] - priority[b.urgency])
-    // Three lines max — doctrine / gank / buy without clutter
-    .slice(0, 3)
+    // Extra candidates so OverlayApp TTL can refill after sticky lines expire
+    .slice(0, 6)
     .map((cue) => ({
       ...cue,
       // Default TTL: roam/tempo info dies fast; spikes get a bit longer
